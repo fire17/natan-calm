@@ -63,23 +63,9 @@ body {
 }
 
 .brand { text-align: center; }
-/* Russian: Heebo has no Cyrillic, Rubik does (and keeps the same soft geometry) */
-html[lang="ru"] body, .lang button[lang="ru"] { font-family: "Rubik", "Heebo", system-ui, -apple-system, "Segoe UI", sans-serif; }
+/* Russian meditation titles/captions: Heebo has no Cyrillic, Rubik does (same soft geometry). UI itself is Hebrew-only (v0.9). */
+.chip[lang="ru"], .voice-caption[lang="ru"] { font-family: "Rubik", "Heebo", system-ui, -apple-system, "Segoe UI", sans-serif; }
 
-/* ---------- language switch ---------- */
-.lang {
-  display: inline-flex; align-items: center; gap: 2px; margin: 0 0 18px; padding: 3px;
-  border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.035);
-}
-.lang button {
-  font: inherit; font-size: 13px; line-height: 1; color: var(--muted);
-  min-height: 32px; padding: 0 13px; border: 0; border-radius: 999px;
-  background: none; cursor: pointer; transition: background .4s, color .4s;
-}
-.lang button:hover { color: var(--text); }
-.lang button:focus-visible { outline: 2px solid var(--teal-soft); outline-offset: 2px; }
-.lang button[aria-pressed="true"] { color: var(--text); background: linear-gradient(135deg, rgba(63,184,176,.30), rgba(79,70,184,.30)); }
-.lang-sep { width: 1px; height: 14px; background: var(--line); }
 h1 {
   margin: 0;
   font-weight: 300;
@@ -105,9 +91,11 @@ h1 {
 .orb-halo {
   position: absolute; inset: -14%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(63, 184, 176, .45) 0%, rgba(79, 70, 184, .25) 45%, transparent 70%);
-  filter: blur(10px);
+  /* v0.8: no filter: blur() — a blurred layer re-filtered every animation frame is costly on weak GPUs; the
+     soft-edged gradient alone gives the same glow. Breathing stays transform/opacity only (compositor, no layout). */
+  background: radial-gradient(circle, rgba(63, 184, 176, .42) 0%, rgba(70, 120, 180, .3) 30%, rgba(79, 70, 184, .18) 50%, rgba(79, 70, 184, .06) 62%, transparent 72%);
   opacity: .55;
+  will-change: transform;
   animation: breathe var(--breath) ease-in-out infinite;
   transition: opacity 2s ease;
 }
@@ -132,6 +120,9 @@ h1 {
 .playing .ico-play { display: none; }
 .playing .ico-pause { display: block; }
 .playing .orb-halo { opacity: 1; }
+
+/* sleep screen covers the app: stop the hidden breathing animations underneath (no wasted frames) */
+.sleeping .orb-halo, .sleeping .orb-core, .sleeping .breath span { animation: none; }
 
 @keyframes breathe {
   0%, 100% { transform: scale(.88); }
@@ -187,6 +178,7 @@ h1 {
 }
 .modes .chip { display: grid; align-content: center; text-align: center; line-height: 1.15; padding: 8px 14px; flex: 1 1 calc(50% - 10px); }
 .chip small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.chip small[hidden] { display: none; }
 
 /* ---------- layers ---------- */
 .layers { display: grid; gap: 6px; }
@@ -251,10 +243,18 @@ input[type="range"]::-moz-range-thumb {
   background: #eafffb; box-shadow: 0 0 0 5px rgba(63,184,176,.25);
 }
 input[type="range"]:focus-visible { outline: 2px solid var(--teal-soft); outline-offset: 4px; border-radius: 8px; }
+/* v0.9 scroll-safe sliders: the native input never sees a finger (keyboard/focus still work); .range-wrap's pointer
+   handler moves it only on a clearly horizontal drag. pan-y = a vertical swipe over a slider just scrolls the page. */
+.range-wrap { position: relative; touch-action: pan-y; cursor: pointer; min-width: 0; }
+.range-wrap > input[type="range"] { pointer-events: none; display: block; }
 
 /* ---------- guided voice ---------- */
 .voice .card-head h2 { margin-bottom: 14px; }
 .voices { margin-bottom: 14px; }
+.med-lang { display: grid; gap: 10px; margin-bottom: 16px; }
+.med-lang-chips .chip { flex: 1 1 0; min-width: 0; min-height: 50px; font-size: 16px; }
+.voices .chip small { display: inline; margin: 0 6px 0 0; font-size: 11.5px; color: var(--teal-soft); }
+.voices .chip small[hidden] { display: none; }
 .voices .chip { min-height: 40px; padding: 0 14px; font-size: 14px; }
 /* sessions: 2-column grid of tiles (name + duration), scales to many sessions on a 360px phone */
 .sessions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -332,6 +332,17 @@ input[type="range"]:focus-visible { outline: 2px solid var(--teal-soft); outline
 body.sleeping { overflow: hidden; }
 
 .foot { text-align: center; color: var(--muted); opacity: .7; font-size: 12px; padding: 8px 16px max(24px, env(safe-area-inset-bottom)); }
+
+/* touch phones: more calm space between rows of controls, so a thumb can grab the page to scroll */
+@media (pointer: coarse) and (max-width: 959px) {
+  .app, .hero, .mixer { gap: 22px; }
+  .card { padding: 20px 18px 22px; }
+  .chips { gap: 12px; }
+  .layers { gap: 10px; }
+  .layer { padding: 14px 4px; row-gap: 8px; }
+  .sessions { gap: 12px; }
+  .row { gap: 14px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

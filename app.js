@@ -1,5 +1,9 @@
 'use strict';
-/* שקט / Тишина v0.7 — everything synthesized live with the Web Audio API. Hebrew + Russian UI. */
+/* שקט v0.9 — Web Audio meditation app. UI is Hebrew-only (RTL); guided meditations in Hebrew or Russian.
+   v0.9: meditation-language chips (UI no longer switches language), scroll-safe sliders/taps for touch phones,
+   APK: voices not shipped inside the APK stream from the site on first use and are cached (Cache API) for offline.
+   v0.8: the heavy layers (music pad, bells, nature) play pre-rendered seamless loops (web/loops/, rendered offline
+   from this file's own synthesis by tools/render-loops/) — weak phones only mix buffers. ?engine=live = old engine. */
 (() => {
   const $ = (s) => document.querySelector(s);
 
@@ -39,7 +43,7 @@
   const I18N = {
     he: {
       docTitle: 'שקט — צלילים לנשימה ולמנוחה',
-      metaDesc: 'צלילים מרגיעים שנוצרים בזמן אמת בדפדפן: פעימות בינאוריות, מוזיקת רקע וצלילי טבע.',
+      metaDesc: 'צלילים לנשימה ולמנוחה: פעימות בינאוריות, מוזיקת רקע, צלילי טבע ומדיטציות מודרכות.',
       appName: 'שקט', tagline: 'צלילים לנשימה ולמנוחה', langAria: 'שפה',
       play: 'התחלה', pause: 'השהיה', tapToStart: 'הקישו כדי להתחיל', tapToPause: 'נושמים… הקישו להשהיה',
       breathIn: 'שאיפה', breathOut: 'נשיפה', hint: '🎧 לחוויה מלאה — אוזניות',
@@ -50,8 +54,9 @@
       binauralTitle: 'פעימות בינאוריות', modesAria: 'מצב פעימות', layersTitle: 'שכבות',
       master: 'עוצמה כללית', volumeOf: (n) => 'עוצמה — ' + n,
       voiceTitle: 'קול מנחה', voiceSoon: 'הקול בהכנה', voicePickerAria: 'בחירת קול', sessionsAria: 'מפגשים מודרכים',
+      medLang: 'שפת המדיטציה', dlFirst: '⬇ יורד בפעם הראשונה',
       night: 'לילה טוב', sleepExit: 'יציאה ממצב שינה', sleepBack: 'חזרה',
-      foot: 'כל הצלילים נוצרים בזמן אמת בדפדפן',
+      foot: 'צלילים לנשימה ולמנוחה',
       'mode.alpha': 'רוגע', 'mode.alpha.sub': 'אלפא · 10Hz',
       'mode.delta': 'שינה', 'mode.delta.sub': 'דלתא · 2.5Hz',
       'mode.beta': 'מיקוד', 'mode.beta.sub': 'בטא · 14Hz',
@@ -75,7 +80,7 @@
       master: 'Общая громкость', volumeOf: (n) => 'Громкость — ' + n,
       voiceTitle: 'Голос ведущего', voiceSoon: 'Голос готовится', voicePickerAria: 'Выбор голоса', sessionsAria: 'Практики с голосом',
       night: 'Спокойной ночи', sleepExit: 'Выйти из режима сна', sleepBack: 'Назад',
-      foot: 'Все звуки создаются в реальном времени прямо в браузере',
+      foot: 'Звуки для дыхания и отдыха',
       'mode.alpha': 'Покой', 'mode.alpha.sub': 'альфа · 10 Гц',
       'mode.delta': 'Сон', 'mode.delta.sub': 'дельта · 2,5 Гц',
       'mode.beta': 'Фокус', 'mode.beta.sub': 'бета · 14 Гц',
@@ -87,12 +92,14 @@
       'voice.sage': 'Голос 3 — спокойный', 'voice.cedar': 'Голос 4 — глубокий', 'voice.natan': 'Голос 5 — Натан',
     },
   };
-  const LANGS = ['he', 'ru'], LANG_KEY = 'shaket.lang';
-  const SLEEP_SESSION = { he: 'sleep', ru: 'ru_sleep' }; // sleep mode's guided voice per language
-  let lang = (() => {
-    try { const q = new URLSearchParams(location.search).get('lang'); if (LANGS.includes(q)) return q; } catch (e) { /* noop */ }
-    try { const v = localStorage.getItem(LANG_KEY); if (LANGS.includes(v)) return v; } catch (e) { /* private mode */ }
-    return /^ru/i.test(navigator.language || '') ? 'ru' : 'he';
+  // v0.9: the UI is always Hebrew (user feedback: "only the meditations in Russian"). The ru table stays for a
+  // possible future UI switch, but nothing selects it. The MEDITATION language (medLang) is the user's choice.
+  const LANGS = ['he', 'ru'], MED_KEY = 'shaket.medlang';
+  const SLEEP_SESSION = { he: 'sleep', ru: 'ru_sleep' }; // sleep mode's guided voice per meditation language
+  const lang = 'he';
+  let medLang = (() => {
+    try { const v = localStorage.getItem(MED_KEY); if (LANGS.includes(v)) return v; } catch (e) { /* private mode */ }
+    return 'he';
   })();
   const t = (k, ...a) => {
     const v = k in I18N[lang] ? I18N[lang][k] : I18N.he[k];
@@ -109,7 +116,6 @@
     if (mt) mt.setAttribute('content', t('appName'));
     document.querySelectorAll('[data-i18n]').forEach((e) => { e.textContent = t(e.dataset.i18n); });
     document.querySelectorAll('[data-i18n-aria]').forEach((e) => { e.setAttribute('aria-label', t(e.dataset.i18nAria)); });
-    document.querySelectorAll('.lang [data-lang]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lang === lang)));
   }
   applyStatic(); // before first paint, independent of the async UI build
 
@@ -569,6 +575,9 @@
   let ctx = null, out, masterGain, comp, duck, voiceBus, voiceFade, voiceOut, voiceGate, bellBus, reverbIn, buf = {}, nodes = {};
   const ANDROID = typeof window.Android !== 'undefined'; // the APK's WebView wrapper (JS bridge)
   let pauseToken = 0;
+  const QS = (() => { try { return new URLSearchParams(location.search); } catch (e) { return { get: () => null }; } })();
+  // 'loops' (default): heavy layers play pre-rendered loops; 'live': v0.7 real-time synthesis (comparison/fallback)
+  let LOOPS = QS.get('engine') !== 'live';
   const rnd = (a, b) => a + Math.random() * (b - a);
   const pick = (arr) => arr[(Math.random() * arr.length) | 0];
   const curve = (v) => v * v;
@@ -746,20 +755,24 @@
     // duck bus: music + nature (+ their reverb) dip under the guided voice; binaural bypasses it
     duck = gain(1); duck.connect(masterGain);
 
-    conv = ctx.createConvolver(); // IR assigned when generated; silent until then
-    reverbIn = gain(1);
-    chain(reverbIn, conv, gain(0.8), duck);
-
     // per layer: level gain -> sleep-fade gain -> bus (reverb send taken after the fade, so tails fade too)
     LAYERS.forEach((l) => {
       const g = gain(0), f = gain(1);
       chain(g, f, l.id === 'binaural' ? masterGain : duck);
-      if (l.send) chain(f, gain(l.send), reverbIn);
       nodes[l.id] = { gain: g, fade: f };
     });
     bellBus = gain(1); bellBus.connect(nodes.music.gain); // bells get their own fade (they leave first in sleep mode)
+    if (LOOPS) { prepared = Promise.resolve(); loopsInit(); } // reverb is baked into the loops: no convolver, no scheduler
+    else prepLive();
+    measureMakeup();
+  }
+  // v0.7 engine: shared convolver reverb + noise beds + IR generated in idle chunks + the 100 ms event scheduler
+  function prepLive() {
+    conv = ctx.createConvolver(); // IR assigned when generated; silent until then
+    reverbIn = gain(1);
+    chain(reverbIn, conv, gain(0.8), duck);
+    LAYERS.forEach((l) => { if (l.send) chain(nodes[l.id].fade, gain(l.send), reverbIn); });
     setInterval(scheduler, 100);
-
     const jobs = [noiseJob('pink'), noiseJob('brown'), noiseJob('white'), impulseJob(2.8, 1.8, (b) => { conv.buffer = b; })];
     prepared = new Promise((res) => {
       const run = () => {
@@ -769,7 +782,16 @@
       };
       idle(run);
     });
-    prepared.then(measureMakeup);
+  }
+  // loops missing (old build, file://, network): fall back to the live engine, transparently
+  function goLive() {
+    if (!LOOPS || !ctx) return;
+    LOOPS = false;
+    Object.values(loops).forEach((L) => stopLoop(L, true));
+    const wasStarted = started;
+    started = false;
+    prepLive();
+    if (wasStarted) prepared.then(() => { if (!started) startLayers(); });
   }
 
   // The compressor adds a fixed makeup gain to everything below threshold; the voice used to get it too.
@@ -800,14 +822,91 @@
   function startLayers() {
     if (started) return;
     started = true;
+    if (LOOPS) { // loops: only binaural is synthesized live (2 oscillators); loops start as they finish decoding
+      buildBinaural(); LAYERS.forEach((l) => applyLayer(l.id));
+      layersLive = true;
+      return;
+    }
     applyLayer('music'); applyLayer('birds'); // event-driven layers: no persistent sources
     const steps = [['binaural', buildBinaural], ['waves', buildWaves], ['rain', buildRain], ['wind', buildWind], ['stream', buildStream]];
     steps.forEach(([id, fn], k) => setTimeout(() => { fn(); applyLayer(id); }, k * STAGGER_MS));
     setTimeout(() => { layersLive = true; kickMusic(); }, steps.length * STAGGER_MS);
   }
 
+  // ---------- pre-rendered loops (v0.8 default engine) ----------
+  // web/loops/<id>.mp3 + loops.json {id: {file, rate, samples, pad, delay, gain}}. Each file = the loop wrapped in
+  // `pad` samples of its own continuation on both sides (MP3 is not gapless), so the app loops exactly
+  // [pad+delay, pad+delay+samples): sample-exact length, and any decoder-delay error only shifts the phase.
+  // Decoded at the file's own rate (24/32 kHz, the layer's real bandwidth) to keep RAM low; a layer's PCM is
+  // dropped a while after it is switched off, its compressed bytes stay for an instant re-decode.
+  const LOOP_DST = { music: 'music', bells: 'music', waves: 'waves', rain: 'rain', wind: 'wind', birds: 'birds', stream: 'stream' };
+  const LOOP_ORDER = ['music', 'bells', 'waves', 'rain', 'wind', 'birds', 'stream'];
+  const LOOP_STOP_MS = 4000, LOOP_EVICT_MS = 60000, LOOP_FADE = 1.5;
+  const loops = {};
+  const loopWanted = (id) => audible(LOOP_DST[id]);
+  function loopsInit() {
+    fetch('loops/loops.json').then((r) => (r.ok ? r.json() : Promise.reject())).then((meta) => {
+      // fetch every file now (cheap compressed bytes), layers that are on first; decode only what is wanted
+      const order = LOOP_ORDER.filter((id) => meta[id]).sort((a, b) => loopWanted(b) - loopWanted(a));
+      order.forEach((id) => {
+        const m = meta[id];
+        loops[id] = { id, m, buf: null, decoding: null, src: null, g: null, stopTO: 0, evictTO: 0,
+          bytes: fetch(m.file).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(m.file)))) };
+        loops[id].bytes.catch(() => {});
+      });
+      if (!order.length) throw new Error('no loops');
+      syncLoops();
+    }).catch(() => goLive());
+  }
+  function decodeLoop(L) {
+    if (L.buf) return Promise.resolve(L.buf);
+    if (L.decoding) return L.decoding;
+    const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    L.decoding = L.bytes.then((ab) => new Promise((res, rej) => {
+      const copy = ab.slice(0); // decodeAudioData detaches its input; keep the bytes for a later re-decode
+      let dc = ctx;
+      try { if (OAC) dc = new OAC(2, 1, L.m.rate); } catch (e) { dc = ctx; }
+      const p = dc.decodeAudioData(copy, res, rej); if (p && p.catch) p.catch(rej);
+    })).then((b) => { L.buf = b; L.decoding = null; return b; }, (e) => { L.decoding = null; throw e; });
+    return L.decoding;
+  }
+  function startLoop(L) {
+    const b = L.buf, m = L.m, ls = (m.pad + (m.delay || 0)) / m.rate, le = ls + m.samples / m.rate;
+    if (L.src || le > b.duration) return;
+    const s = ctx.createBufferSource(), g = gain(0), t = ctx.currentTime;
+    s.buffer = b; s.loop = true; s.loopStart = ls; s.loopEnd = le;
+    chain(s, g, L.id === 'bells' ? bellBus : nodes[LOOP_DST[L.id]].gain);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(m.gain, t + LOOP_FADE); // fades in whenever it arrives
+    s.start(t, rnd(ls, le)); // a different place in the loop every session
+    L.src = s; L.g = g;
+  }
+  // switched off: the layer gain is already fading; stop the source once silent (a silent source still costs
+  // CPU), and free the decoded PCM a minute later unless the layer came back
+  function stopLoop(L, now) {
+    const kill = () => {
+      L.stopTO = 0;
+      if (L.src) { try { L.src.stop(); } catch (e) { /* noop */ } L.src.disconnect(); L.g.disconnect(); L.src = L.g = null; }
+      if (L.buf && !L.evictTO) L.evictTO = setTimeout(() => { L.evictTO = 0; if (!L.src && !loopWanted(L.id)) L.buf = null; }, LOOP_EVICT_MS);
+    };
+    if (now) { clearTimeout(L.stopTO); kill(); } else if (L.src && !L.stopTO) L.stopTO = setTimeout(() => { if (!loopWanted(L.id)) kill(); else L.stopTO = 0; }, LOOP_STOP_MS);
+    else if (!L.src) kill();
+  }
+  // bring the running loop sources in line with the mixer state (called on every layer/preset change)
+  function syncLoops() {
+    if (!LOOPS || !ctx) return;
+    for (const id in loops) {
+      const L = loops[id];
+      if (!loopWanted(id)) { stopLoop(L); continue; }
+      clearTimeout(L.stopTO); clearTimeout(L.evictTO); L.stopTO = L.evictTO = 0;
+      if (L.src) continue; // still running (the level gain brings it back)
+      if (L.buf) { if (started) startLoop(L); continue; }
+      decodeLoop(L).then(() => { if (LOOPS && started && loopWanted(id)) startLoop(L); }, () => {});
+    }
+  }
+
   // ---------- layers ----------
   function buildBinaural() {
+    if (nodes.binaural.L) return;
     const m = MODES.find((x) => x.id === state.mode);
     const merger = ctx.createChannelMerger(2);
     const L = ctx.createOscillator(), R = ctx.createOscillator();
@@ -988,7 +1087,7 @@
   const audible = (id) => state.layers[id].on && state.layers[id].vol > 0.001;
   // start a chord right away if none is sounding (music just turned on / play just started)
   function kickMusic() {
-    if (!ctx || !audible('music')) return;
+    if (!ctx || LOOPS || !audible('music')) return;
     const now = ctx.currentTime;
     if (now - lastChordT > CHORD_LEN) { next.chord = now + 0.05; next.bell = Math.max(next.bell, now + rnd(1.5, 3)); }
   }
@@ -1032,6 +1131,7 @@
     g.setValueAtTime(g.value, t);
     g.setTargetAtTime(target, t, instant ? 0.01 : 0.6);
     if (id === 'music' && s.on) kickMusic();
+    if (LOOPS && id !== 'binaural') syncLoops();
   }
 
   function play() {
@@ -1091,6 +1191,7 @@
       g.cancelScheduledValues(t); g.setValueAtTime(g.value, t);
       g.setTargetAtTime(s.on ? curve(s.vol) * l.scale : 0, t, 1);
     });
+    syncLoops();
     kickMusic();
     render();
   }
@@ -1137,7 +1238,7 @@
       p.setValueCurveAtTime(fadeCurve, t + 0.5 + a * D, Math.max(0.5, (b - a) * D - 0.5));
     });
     if (sleep.voice) {
-      const vs = SESSIONS.find((s) => s.id === SLEEP_SESSION[lang]);
+      const vs = SESSIONS.find((s) => s.id === SLEEP_SESSION[medLang]);
       if (vs && !has(voice.id, vs.id)) { const v = VOICES.find((x) => has(x.id, vs.id)); if (v) setVoice(v.id, false); }
       if (vs && has(voice.id, vs.id)) startVoice(vs);
     }
@@ -1177,8 +1278,8 @@
   };
   const segUrl = (voiceId, seg) => `voice/${voiceId}/${seg.file}`;
   const has = (voiceId, sessionId) => !!voice.avail[voiceId + '/' + sessionId];
-  const langSessions = () => SESSIONS.filter((s) => sessionLang(s) === lang);
-  const voiceHasAny = (voiceId) => langSessions().some((s) => has(voiceId, s.id)); // in the current language
+  const langSessions = () => SESSIONS.filter((s) => sessionLang(s) === medLang);
+  const voiceHasAny = (voiceId) => langSessions().some((s) => has(voiceId, s.id)); // in the meditation language
   // after the check / a language switch: the preferred voice if it has audio here, else any voice that does.
   // Never changes the voice under a running session unless that voice has nothing in this language.
   function ensureVoice() {
@@ -1211,10 +1312,52 @@
     g.setValueAtTime(Math.max(g.value, 0.0001), t);
     g.exponentialRampToValueAtTime(to, t + sec);
   }
-  async function loadSeg(url) {
+  // ---------- remote voices (APK only, v0.9) ----------
+  // The APK ships only some voices; a voice file missing locally (the wrapper answers a real 404) is fetched from
+  // the public site (same relative path, CORS *) and kept in the Cache API, so it plays offline afterwards.
+  // Local-only voices (voices-local.json, e.g. 'natan') are never on the site and are never fetched remotely.
+  const REMOTE_BASE = (QS.get('debug') && QS.get('remote')) || 'https://natan-calm.akeyo.io/'; // ?debug=1&remote=<base> for tests
+  const VOICE_CACHE = 'shaket-voices-v1';
+  const canRemote = (voiceId) => ANDROID && voiceId !== 'natan' && !VOICES.some((v) => v.id === voiceId && v.local);
+  const isAudio = (r) => !!r && r.ok && !/text\/html/i.test(r.headers.get('content-type') || ''); // SPA hosts: 200 + html
+  const openCache = async () => { try { return 'caches' in window ? await caches.open(VOICE_CACHE) : null; } catch (e) { return null; } };
+  async function remoteFetch(rel) {
+    const url = REMOTE_BASE + rel, cache = await openCache();
+    if (cache) { try { const hit = await cache.match(url); if (hit) return hit; } catch (e) { /* noop */ } }
     try {
-      const r = await fetch(url);
-      if (!r.ok) return null;
+      const r = await fetch(url, { mode: 'cors' });
+      if (!isAudio(r)) return null;
+      if (cache) cache.put(url, r.clone()).catch(() => {}); // best effort (quota)
+      return r;
+    } catch (e) { return null; } // offline
+  }
+  async function voiceFetch(voiceId, seg) {
+    const rel = segUrl(voiceId, seg);
+    let r = null;
+    try { r = await fetch(rel); } catch (e) { r = null; }
+    if (isAudio(r)) return r;
+    return canRemote(voiceId) ? remoteFetch(rel) : null;
+  }
+  // first remote play: quietly cache the whole session (sequential, small files), so it all works offline next time
+  async function cacheSession(voiceId, s) {
+    const cache = await openCache();
+    if (!cache) return;
+    for (const seg of s.segments) {
+      const url = REMOTE_BASE + segUrl(voiceId, seg);
+      try {
+        if (await cache.match(url)) continue;
+        const r = await fetch(url, { mode: 'cors' });
+        if (isAudio(r)) await cache.put(url, r); else return;
+      } catch (e) { return; } // offline / quota: the next play retries
+    }
+    const k = voiceId + '/' + s.id;
+    if (voice.avail[k] === 'remote') { voice.avail[k] = 'cached'; renderVoice(); }
+  }
+
+  async function loadSeg(voiceId, seg) {
+    try {
+      const r = await voiceFetch(voiceId, seg);
+      if (!r) return null;
       const ab = await r.arrayBuffer();
       return await new Promise((res, rej) => { const p = ctx.decodeAudioData(ab, res, rej); if (p && p.catch) p.catch(rej); });
     } catch (e) { return null; }
@@ -1227,7 +1370,7 @@
   async function runVoice(s, tok) {
     const list = s.segments, g = duck.gain, live = () => tok === voice.token, vid = voice.id, DUCK = duckLevel();
     let t = ctx.currentTime + DUCK_IN, held = false, first = true, lastEnd = ctx.currentTime;
-    let pending = loadSeg(segUrl(vid, list[0]));
+    let pending = loadSeg(vid, list[0]);
     for (let i = 0; i < list.length; i++) {
       const b = await pending;
       if (!live()) return;
@@ -1251,7 +1394,7 @@
         t += pauseAfter;
       }
       if (b) { await waitUntil(start, live); if (!live()) return; voice.caption = list[i].text; renderVoice(); }
-      if (!last) pending = loadSeg(segUrl(vid, list[i + 1])); // keep at most ~3 decoded buffers alive
+      if (!last) pending = loadSeg(vid, list[i + 1]); // keep at most ~3 decoded buffers alive
     }
     await waitUntil(lastEnd + DUCK_OUT, live);
   }
@@ -1268,17 +1411,27 @@
     if (!state.playing) play(); // still inside the tap
     stopVoice();
     voice.session = s.id;
+    if (voice.avail[voice.id + '/' + s.id] === 'remote') cacheSession(voice.id, s);
     const tok = voice.token;
     runVoice(s, tok).catch(() => {}).finally(() => { if (tok === voice.token) stopVoice(); });
     render();
   }
-  async function exists(url) {
+  async function exists(url, opts) {
     try {
-      let r = await fetch(url, { method: 'HEAD', cache: 'no-store' });
-      if (r.status === 405 || r.status === 501) r = await fetch(url, { cache: 'no-store' });
-      // SPA hosts answer 200 + index.html for missing files — that is not audio
-      return r.ok && !/text\/html/i.test(r.headers.get('content-type') || '');
+      let r = await fetch(url, Object.assign({ method: 'HEAD', cache: 'no-store' }, opts));
+      if (r.status === 405 || r.status === 501) r = await fetch(url, Object.assign({ cache: 'no-store' }, opts));
+      return isAudio(r);
     } catch (e) { return false; }
+  }
+  // availability of a voice x session (segment 1): 'local' | 'cached' | 'remote' (site, online) | false
+  async function availability(voiceId, seg) {
+    const rel = segUrl(voiceId, seg);
+    if (await exists(rel)) return 'local';
+    if (!canRemote(voiceId)) return false;
+    const cache = await openCache();
+    if (cache) { try { if (await cache.match(REMOTE_BASE + rel)) return 'cached'; } catch (e) { /* noop */ } }
+    if (navigator.onLine === false) return false;
+    return (await exists(REMOTE_BASE + rel, { mode: 'cors' })) ? 'remote' : false;
   }
   function setVoice(id, remember) {
     if (remember) { prefVoice = id; try { localStorage.setItem(VOICE_KEY, id); } catch (e) { /* private mode */ } }
@@ -1291,7 +1444,7 @@
     if (location.protocol === 'file:') { voice.checked = true; renderVoice(); return; } // fetch can't see local files
     const jobs = [];
     VOICES.forEach((v) => SESSIONS.forEach((s) => jobs.push(
-      exists(segUrl(v.id, s.segments[0])).then((ok) => { voice.avail[v.id + '/' + s.id] = ok; }))));
+      availability(v.id, s.segments[0]).then((ok) => { voice.avail[v.id + '/' + s.id] = ok; }))));
     Promise.all(jobs).then(() => {
       voice.checked = true;
       // remembered/default voice has no audio yet (in this language) but another does -> show that one (not remembered)
@@ -1326,7 +1479,78 @@
   // ---------- UI ----------
   const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
   const setFill = (r) => r.style.setProperty('--p', (r.value * 100) + '%');
-  const ui = { presets: {}, modes: {}, timers: {}, layers: {}, sessions: {}, voices: {}, sleepDurs: {} };
+  const ui = { presets: {}, modes: {}, timers: {}, layers: {}, sessions: {}, voices: {}, voiceNames: {}, voiceHints: {}, sleepDurs: {} };
+
+  // ---------- scroll-safe touch (v0.9) ----------
+  // Feedback from a real phone: scrolling the page kept changing the sound. Two guards:
+  // 1) tapGuard: every control acts on 'click' only; a click whose touch moved >10px, was cancelled by a scroll, or
+  //    during which the page scrolled, is swallowed (capture phase) before any handler sees it.
+  // 2) scrollSafeRange: the native slider never receives the finger (pointer-events:none, keyboard still works);
+  //    its wrapper (touch-action: pan-y) moves it only once a drag is clearly horizontal (dx>10, |dx|>1.5|dy|).
+  //    A vertical gesture scrolls the page and leaves the value untouched.
+  const TAP_SLOP = 10;
+  (function tapGuard() {
+    const g = { id: null, x: 0, y: 0, bad: false, upAt: 0 };
+    const opt = { capture: true, passive: true };
+    document.addEventListener('pointerdown', (e) => { g.id = e.pointerId; g.x = e.clientX; g.y = e.clientY; g.bad = false; }, opt);
+    document.addEventListener('pointermove', (e) => {
+      if (e.pointerId === g.id && Math.hypot(e.clientX - g.x, e.clientY - g.y) > TAP_SLOP) g.bad = true;
+    }, opt);
+    const end = (bad) => (e) => { if (e.pointerId !== g.id) return; if (bad) g.bad = true; g.id = null; g.upAt = Date.now(); };
+    document.addEventListener('pointerup', end(false), opt);
+    document.addEventListener('pointercancel', end(true), opt); // the browser took the touch over for scrolling
+    window.addEventListener('scroll', () => { if (g.id !== null) g.bad = true; }, opt);
+    document.addEventListener('click', (e) => {
+      if (g.bad && Date.now() - g.upAt < 1000) { e.preventDefault(); e.stopImmediatePropagation(); }
+      g.bad = false;
+    }, true);
+  })();
+  function scrollSafeRange(r, cls) {
+    const w = el('div', 'range-wrap' + (cls ? ' ' + cls : ''));
+    if (r.parentNode) r.parentNode.insertBefore(w, r);
+    w.append(r);
+    let st = null;
+    const setFromX = (x) => {
+      const box = r.getBoundingClientRect(), th = 12; // half the thumb: its centre spans [left+12, right-12]
+      const min = +r.min || 0, max = +r.max || 1, step = +r.step || 0.01;
+      let f = (x - box.left - th) / Math.max(1, box.width - 2 * th);
+      f = Math.min(1, Math.max(0, f));
+      const v = Math.round((min + f * (max - min)) / step) * step;
+      if (Math.abs(v - +r.value) < step / 2) return;
+      r.value = v;
+      r.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    w.addEventListener('pointerdown', (e) => {
+      if (e.button > 0) return;
+      st = { id: e.pointerId, x: e.clientX, y: e.clientY, sy: window.scrollY, h: false, mouse: e.pointerType === 'mouse' };
+      if (st.mouse) e.preventDefault(); // no text selection while dragging with a mouse
+    });
+    w.addEventListener('pointermove', (e) => {
+      if (!st || e.pointerId !== st.id) return;
+      if (!st.h) {
+        const dx = Math.abs(e.clientX - st.x), dy = Math.abs(e.clientY - st.y);
+        if (window.scrollY !== st.sy) { st = null; return; } // the page is scrolling: never touch the value
+        if (dx > TAP_SLOP && dx > 1.5 * dy) {
+          st.h = true;
+          try { w.setPointerCapture(e.pointerId); } catch (err) { /* noop */ }
+        } else {
+          if (dy > TAP_SLOP) st = null; // vertical: it's a scroll
+          return;
+        }
+      }
+      setFromX(e.clientX);
+    });
+    // once horizontal, hold the page still for the rest of this drag (non-passive only here)
+    w.addEventListener('touchmove', (e) => { if (st && st.h && e.cancelable) e.preventDefault(); }, { passive: false });
+    w.addEventListener('pointerup', (e) => {
+      if (!st || e.pointerId !== st.id) return;
+      // a plain mouse click on the track still jumps there (desktop); a finger tap never changes the value
+      if (!st.h && st.mouse && Math.hypot(e.clientX - st.x, e.clientY - st.y) <= 4) setFromX(e.clientX);
+      st = null;
+    });
+    w.addEventListener('pointercancel', () => { st = null; });
+    return w;
+  }
 
   function buildUI() {
     PRESETS.forEach((p) => {
@@ -1356,8 +1580,9 @@
       const row = el('div', 'layer');
       const tog = el('button', 'toggle', l.icon); tog.type = 'button';
       const name = el('div', 'layer-name');
-      const r = el('input', 'layer-range');
+      const r = el('input');
       Object.assign(r, { type: 'range', min: 0, max: 1, step: 0.01 });
+      const rw = scrollSafeRange(r, 'layer-range');
       tog.addEventListener('click', () => {
         const s = state.layers[l.id]; s.on = !s.on;
         if (s.on && s.vol < 0.05) s.vol = 0.4;
@@ -1367,18 +1592,22 @@
         const s = state.layers[l.id]; s.vol = +r.value; s.on = s.vol > 0.001;
         state.preset = null; setFill(r); applyLayer(l.id); render();
       });
-      row.append(tog, name, r); $('#layers').append(row);
+      row.append(tog, name, rw); $('#layers').append(row);
       ui.layers[l.id] = { row, tog, r, name };
     });
     VOICES.forEach((v) => {
       const b = el('button', 'chip'); b.type = 'button';
       b.disabled = true;
+      const nm = el('span'), hint = el('small', 'dl-hint'); hint.hidden = true;
+      b.append(nm, hint);
       b.addEventListener('click', () => setVoice(v.id, true));
-      $('#voicePicker').append(b); ui.voices[v.id] = b;
+      $('#voicePicker').append(b); ui.voices[v.id] = b; ui.voiceNames[v.id] = nm; ui.voiceHints[v.id] = hint;
     });
+    document.querySelectorAll('#medLang [data-medlang]').forEach((b) => b.addEventListener('click', () => setMedLang(b.dataset.medlang)));
     SESSIONS.forEach((s) => {
       const b = el('button', 'chip session'); b.type = 'button';
       b.lang = sessionLang(s); // session names come from the session itself
+      if (b.lang === 'ru') b.dir = 'ltr';
       const nm = el('span'), du = el('small'); nm.textContent = s.name; du.textContent = s.dur || '';
       b.append(nm, du);
       b.disabled = true;
@@ -1401,6 +1630,7 @@
     });
 
     const master = $('#master');
+    scrollSafeRange(master);
     setFill(master);
     master.addEventListener('input', () => {
       state.master = +master.value; setFill(master);
@@ -1410,7 +1640,7 @@
     document.addEventListener('keydown', (e) => {
       if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); state.playing ? pause() : play(); }
     });
-    document.querySelectorAll('.lang [data-lang]').forEach((b) => b.addEventListener('click', () => setLang(b.dataset.lang)));
+    if (ANDROID) window.addEventListener('online', checkVoice); // remote voices become available again
     relabel();
     setInterval(tickTimer, 1000);
     initMediaSession();
@@ -1434,38 +1664,40 @@
       u.name.textContent = nm;
       if (sub) { const sm = el('small'); sm.textContent = sub; u.name.append(sm); }
     });
-    VOICES.forEach((v) => { ui.voices[v.id].textContent = voiceName(v); });
+    VOICES.forEach((v) => { ui.voiceNames[v.id].textContent = voiceName(v); ui.voiceHints[v.id].textContent = t('dlFirst'); });
     SLEEP_DURS.forEach((min) => { ui.sleepDurs[min].textContent = t('min', min); });
   }
-  // live switch: never touches the audio graph, a running session or sleep mode
-  function setLang(l, remember = true) {
+  // meditation language (v0.9): filters sessions + voices; the UI stays Hebrew. Never touches the audio graph or
+  // sleep mode; a running session in the other language is stopped (its tile would otherwise be hidden).
+  function setMedLang(l) {
     if (!LANGS.includes(l)) return;
-    if (remember) { try { localStorage.setItem(LANG_KEY, l); } catch (e) { /* private mode */ } }
-    if (l === lang) return;
-    lang = l;
-    applyStatic();
-    relabel();
+    try { localStorage.setItem(MED_KEY, l); } catch (e) { /* private mode */ }
+    if (l === medLang) return;
+    medLang = l;
+    const cur = SESSIONS.find((s) => s.id === voice.session);
+    if (cur && sessionLang(cur) !== medLang && !sleep.on) stopVoice();
     ensureVoice();
     render();
   }
 
+  const setText = (e, v) => { if (e.textContent !== v) e.textContent = v; }; // no DOM write (no relayout) when unchanged
   const fmt = (ms) => { const m = Math.floor(ms / 60000), s = Math.floor((ms % 60000) / 1000); return `${m}:${String(s).padStart(2, '0')}`; };
   function tickTimer() {
     const lbl = $('#timerLeft');
     if (sleep.on) {
       const left = Math.max(0, sleep.endAt - Date.now());
-      lbl.textContent = '🌙 ' + fmt(left); $('#sleepLeft').textContent = fmt(left);
+      setText(lbl, '🌙 ' + fmt(left)); setText($('#sleepLeft'), fmt(left));
       if (left <= 0) endSleep();
       return;
     }
-    $('#sleepLeft').textContent = '';
+    setText($('#sleepLeft'), '');
     if (state.playing && state.endAt) {
       const left = Math.max(0, state.endAt - Date.now());
-      lbl.textContent = fmt(left);
+      setText(lbl, fmt(left));
       if (left <= 0) { pause(true); lbl.textContent = ''; }
     } else if (!state.playing && state.timerMin && state.remainMs > 0) {
-      lbl.textContent = fmt(state.remainMs) + ' · ' + t('paused');
-    } else lbl.textContent = '';
+      setText(lbl, fmt(state.remainMs) + ' · ' + t('paused'));
+    } else setText(lbl, '');
   }
 
   function renderVoice() {
@@ -1480,14 +1712,19 @@
       // a voice with no audio for any session never shows (local ones stay hidden until proven)
       b.style.display = (voice.checked || v.local) && !voiceHasAny(v.id) ? 'none' : '';
       b.setAttribute('aria-pressed', String(voice.id === v.id));
+      // APK: some of this language's sessions for this voice still stream from the site on first play
+      ui.voiceHints[v.id].hidden = !langSessions().some((s) => voice.avail[v.id + '/' + s.id] === 'remote');
     });
+    document.querySelectorAll('#medLang [data-medlang]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.medlang === medLang)));
     SESSIONS.forEach((s) => {
       const b = ui.sessions[s.id];
-      b.style.display = sessionLang(s) === lang ? '' : 'none'; // only this language's sessions
+      b.style.display = sessionLang(s) === medLang ? '' : 'none'; // only the meditation language's sessions
       b.disabled = !has(voice.id, s.id);
       b.setAttribute('aria-pressed', String(voice.session === s.id));
     });
-    const cap = $('#voiceCaption');
+    const cap = $('#voiceCaption'), cs = SESSIONS.find((s) => s.id === voice.session);
+    const capLang = cs ? sessionLang(cs) : 'he';
+    if (cap.lang !== capLang) { cap.lang = capLang; cap.dir = capLang === 'ru' ? 'ltr' : 'rtl'; }
     cap.textContent = voice.caption;
     cap.hidden = !voice.caption;
   }
@@ -1502,7 +1739,7 @@
     $('#sleepCard').classList.toggle('on', sleep.on);
     for (const m in ui.sleepDurs) ui.sleepDurs[m].setAttribute('aria-pressed', String(sleep.min === +m));
     $('#sleepVoice').setAttribute('aria-checked', String(sleep.voice));
-    const ready = VOICES.some((v) => has(v.id, SLEEP_SESSION[lang]));
+    const ready = VOICES.some((v) => has(v.id, SLEEP_SESSION[medLang]));
     $('#sleepVoiceNote').textContent = voice.checked && !ready ? t('sleepVoiceSoon') : '';
   }
 
@@ -1527,6 +1764,7 @@
     tickTimer();
   }
 
+  if (QS.get('debug')) window.__shaket = { get ctx() { return ctx; }, nodes, loops, state, get engine() { return LOOPS ? 'loops' : 'live'; } };
   try { prepAudio(); } catch (e) { ctx = null; } // early, off the tap path; play() retries if this failed
   loadLocalVoices().finally(() => { buildUI(); render(); });
 })();

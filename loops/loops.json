@@ -1,0 +1,72 @@
+{
+ "bells": {
+  "delay": 0,
+  "file": "loops/bells.mp3",
+  "gain": 1.0547,
+  "pad": 6000,
+  "rate": 24000,
+  "rms": 0.012419,
+  "samples": 2880000,
+  "seconds": 120
+ },
+ "birds": {
+  "delay": 0,
+  "file": "loops/birds.mp3",
+  "gain": 1.0362,
+  "pad": 6000,
+  "rate": 24000,
+  "rms": 0.0134,
+  "samples": 2880000,
+  "seconds": 120
+ },
+ "music": {
+  "delay": 0,
+  "file": "loops/music.mp3",
+  "gain": 1.0516,
+  "pad": 6000,
+  "rate": 24000,
+  "rms": 0.056145,
+  "samples": 3456000,
+  "seconds": 144
+ },
+ "rain": {
+  "delay": 0,
+  "file": "loops/rain.mp3",
+  "gain": 1.0392,
+  "pad": 8000,
+  "rate": 32000,
+  "rms": 0.118681,
+  "samples": 2880000,
+  "seconds": 90
+ },
+ "stream": {
+  "delay": 0,
+  "file": "loops/stream.mp3",
+  "gain": 1.0451,
+  "pad": 6000,
+  "rate": 24000,
+  "rms": 0.063371,
+  "samples": 2304000,
+  "seconds": 96
+ },
+ "waves": {
+  "delay": 0,
+  "file": "loops/waves.mp3",
+  "gain": 1.0827,
+  "pad": 6000,
+  "rate": 24000,
+  "rms": 0.127939,
+  "samples": 2928000,
+  "seconds": 122
+ },
+ "wind": {
+  "delay": 0,
+  "file": "loops/wind.mp3",
+  "gain": 1.0193,
+  "pad": 8000,
+  "rate": 32000,
+  "rms": 0.052372,
+  "samples": 3840000,
+  "seconds": 120
+ }
+}
