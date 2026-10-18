@@ -98,6 +98,10 @@
         </div>
       </div>
       <div id="voicePicker" class="chips voices" role="group" aria-label="בחירת קול" data-i18n-aria="voicePickerAria"></div>
+      <div class="row voice-vol">
+        <span class="row-name" data-i18n="voiceVol">עוצמת הקול המנחה</span>
+        <input id="voiceVol" type="range" min="0" max="1" step="0.01" value="0.71" aria-label="עוצמת הקול המנחה" data-i18n-aria="voiceVol">
+      </div>
       <div id="sessions" class="sessions" role="group" aria-label="מפגשים מודרכים" data-i18n-aria="sessionsAria"></div>
       <p id="voiceCaption" class="voice-caption" aria-live="polite" hidden></p>
     </div>
@@ -112,7 +116,7 @@
   </div>
 </div>
 
-<footer class="foot">v0.9 · <span data-i18n="foot">צלילים לנשימה ולמנוחה</span></footer>
+<footer class="foot">v0.10 · <span data-i18n="foot">צלילים לנשימה ולמנוחה</span></footer>
 
 <script src="app.js"></script>
 </body>

@@ -1,5 +1,7 @@
 'use strict';
-/* שקט v0.9 — Web Audio meditation app. UI is Hebrew-only (RTL); guided meditations in Hebrew or Russian.
+/* שקט v0.10 — Web Audio meditation app. UI is Hebrew-only (RTL); guided meditations in Hebrew or Russian.
+   v0.10: guided-voice volume slider (default ≈ +6 dB over v0.9, up to ≈ +12 dB; a limiter on the voice path keeps
+   it from clipping), deeper ducking under the voice (−12 dB; sleep mode −8 dB).
    v0.9: meditation-language chips (UI no longer switches language), scroll-safe sliders/taps for touch phones,
    APK: voices not shipped inside the APK stream from the site on first use and are cached (Cache API) for offline.
    v0.8: the heavy layers (music pad, bells, nature) play pre-rendered seamless loops (web/loops/, rendered offline
@@ -53,6 +55,7 @@
       min: (n) => `${n} דק׳`,
       binauralTitle: 'פעימות בינאוריות', modesAria: 'מצב פעימות', layersTitle: 'שכבות',
       master: 'עוצמה כללית', volumeOf: (n) => 'עוצמה — ' + n,
+      voiceVol: 'עוצמת הקול המנחה',
       voiceTitle: 'קול מנחה', voiceSoon: 'הקול בהכנה', voicePickerAria: 'בחירת קול', sessionsAria: 'מפגשים מודרכים',
       medLang: 'שפת המדיטציה', dlFirst: '⬇ יורד בפעם הראשונה',
       night: 'לילה טוב', sleepExit: 'יציאה ממצב שינה', sleepBack: 'חזרה',
@@ -78,6 +81,7 @@
       min: (n) => `${n} мин`,
       binauralTitle: 'Бинауральные ритмы', modesAria: 'Режим ритмов', layersTitle: 'Слои',
       master: 'Общая громкость', volumeOf: (n) => 'Громкость — ' + n,
+      voiceVol: 'Громкость голоса',
       voiceTitle: 'Голос ведущего', voiceSoon: 'Голос готовится', voicePickerAria: 'Выбор голоса', sessionsAria: 'Практики с голосом',
       night: 'Спокойной ночи', sleepExit: 'Выйти из режима сна', sleepBack: 'Назад',
       foot: 'Звуки для дыхания и отдыха',
@@ -566,13 +570,20 @@
   ];
   // @voice-data-end
 
+  // guided-voice volume (v0.10): slider 0..1, gain = VOICE_BOOST * curve(v). 0.71 -> ≈ +6 dB over v0.9, 1 -> +12 dB.
+  const VOICE_VOL_KEY = 'shaket.voiceVol', VOICE_VOL_DEFAULT = 0.71, VOICE_BOOST = 4;
+  const savedVoiceVol = (() => {
+    try { const v = parseFloat(localStorage.getItem(VOICE_VOL_KEY)); return v >= 0 && v <= 1 ? v : VOICE_VOL_DEFAULT; }
+    catch (e) { return VOICE_VOL_DEFAULT; }
+  })();
   const state = {
+    voiceVol: savedVoiceVol,
     playing: false, mode: 'alpha', master: 0.8, timerMin: 0, endAt: 0, remainMs: 0, preset: null,
     layers: Object.fromEntries(LAYERS.map((l) => [l.id, { on: l.on, vol: l.vol }])),
   };
 
   // ---------- audio core ----------
-  let ctx = null, out, masterGain, comp, duck, voiceBus, voiceFade, voiceOut, voiceGate, bellBus, reverbIn, buf = {}, nodes = {};
+  let ctx = null, out, masterGain, comp, duck, voiceBus, voiceFade, voiceOut, voiceLim, voiceTrim, voiceGate, bellBus, reverbIn, buf = {}, nodes = {};
   const ANDROID = typeof window.Android !== 'undefined'; // the APK's WebView wrapper (JS bridge)
   let pauseToken = 0;
   const QS = (() => { try { return new URLSearchParams(location.search); } catch (e) { return { get: () => null }; } })();
@@ -730,7 +741,7 @@
   // allowed everywhere). Noise beds + reverb IR are generated in idle-time chunks, so the first tap only
   // resumes + starts. Sources then start staggered under a silent warm-up instead of all in one quantum.
   const WARMUP = 0.5, STAGGER_MS = 200, VOICE_TRIM_MAX = 1.5;
-  let conv = null, prepared = null, urgent = false, started = false, layersLive = false, compMakeup = 1;
+  let conv = null, prepared = null, urgent = false, started = false, layersLive = false, compMakeup = 1, limMakeup = 1;
   const idle = (fn) => (!urgent && window.requestIdleCallback
     ? requestIdleCallback(fn, { timeout: 250 }) : setTimeout(fn, urgent ? 0 : 16));
 
@@ -748,8 +759,15 @@
 
     // guided voice: after the compressor (never compressed/pumped by the music), no reverb.
     // voiceOut carries the master level (x compressor makeup, capped); voiceGate mirrors `out`'s ramps.
+    // v0.10: voiceOut also carries the voice-volume slider (up to +12 dB), so a brick-wall-ish limiter follows it
+    // (threshold -3 dBFS, ratio 20, 1 ms attack); voiceTrim undoes the limiter's own makeup gain (measured below),
+    // so below the threshold the voice passes at unity and loud peaks land around -2 dBFS instead of clipping.
     voiceBus = gain(0.95); voiceFade = gain(1); voiceOut = gain(curve(state.master)); voiceGate = gain(0);
-    chain(voiceBus, voiceFade, voiceOut, voiceGate);
+    voiceLim = ctx.createDynamicsCompressor();
+    voiceLim.threshold.value = -3; voiceLim.knee.value = 0; voiceLim.ratio.value = 20;
+    voiceLim.attack.value = 0.001; voiceLim.release.value = 0.1;
+    voiceTrim = gain(1);
+    chain(voiceBus, voiceFade, voiceOut, voiceLim, voiceTrim, voiceGate);
     routeOutput();
 
     // duck bus: music + nature (+ their reverb) dip under the guided voice; binaural bypasses it
@@ -796,25 +814,32 @@
 
   // The compressor adds a fixed makeup gain to everything below threshold; the voice used to get it too.
   // Measure it once offline (a -40dB tone through an identical compressor) so the voice keeps its level.
-  function measureMakeup() {
+  // v0.10: same measurement for the voice limiter, whose makeup voiceTrim cancels. Its makeup settles only after
+  // ~8k samples (2048 reads 0.81 vs the steady 1.22 in Chrome), so the limiter is measured over 0.5 s. The compressor
+  // keeps its v0.9 2048-sample reading (also pre-steady: ~1.04 vs 1.49) so the voice baseline v0.10 is tuned on stays put.
+  function makeupOf(model, n = 2048) {
     const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-    if (!OAC) return;
+    if (!OAC) return Promise.resolve(null);
     try {
-      const sr = 44100, n = 2048, oc = new OAC(1, n, sr), b = oc.createBuffer(1, n, sr);
+      const sr = 44100, oc = new OAC(1, n, sr), b = oc.createBuffer(1, n, sr);
       b.getChannelData(0).fill(0.01);
       const s = oc.createBufferSource(), c = oc.createDynamicsCompressor();
-      ['threshold', 'knee', 'ratio', 'attack', 'release'].forEach((k) => { c[k].value = comp[k].value; });
+      ['threshold', 'knee', 'ratio', 'attack', 'release'].forEach((k) => { c[k].value = model[k].value; });
       s.buffer = b; chain(s, c, oc.destination); s.start(0);
-      new Promise((res) => {
+      return new Promise((res) => {
         oc.oncomplete = (e) => res(e.renderedBuffer);
         const p = oc.startRendering(); if (p && p.then) p.then(res, () => res(null));
       }).then((r) => {
-        const v = r ? r.getChannelData(0)[n - 1] / 0.01 : 1;
-        if (v > 0.5 && v < 8) { compMakeup = v; setVoiceOut(0.05); }
-      });
-    } catch (e) { /* keep 1 */ }
+        const v = r ? r.getChannelData(0)[n - 1] / 0.01 : 0;
+        return v > 0.5 && v < 8 ? v : null;
+      }, () => null);
+    } catch (e) { return Promise.resolve(null); }
   }
-  const voiceLevel = () => curve(state.master) * Math.min(compMakeup, VOICE_TRIM_MAX);
+  function measureMakeup() {
+    makeupOf(comp).then((v) => { if (v) { compMakeup = v; setVoiceOut(0.05); } });
+    makeupOf(voiceLim, 22050).then((v) => { if (v) { limMakeup = v; voiceTrim.gain.setTargetAtTime(1 / v, ctx.currentTime, 0.05); } });
+  }
+  const voiceLevel = () => curve(state.master) * Math.min(compMakeup, VOICE_TRIM_MAX) * VOICE_BOOST * curve(state.voiceVol);
   function setVoiceOut(tc) { voiceOut.gain.setTargetAtTime(voiceLevel(), ctx.currentTime, tc); }
   const outGains = () => [out.gain, voiceGate.gain];
 
@@ -1267,7 +1292,7 @@
   }
 
   // ---------- guided voice player + smart ducking ----------
-  const duckLevel = () => Math.pow(10, (sleep.on ? -6 : -9) / 20); // music + nature; binaural untouched; gentler in sleep mode
+  const duckLevel = () => Math.pow(10, (sleep.on ? -8 : -12) / 20); // music + nature; binaural untouched; gentler in sleep mode
   const DUCK_IN = 1.2, DUCK_OUT = 2.5, HOLD_BELOW = 4; // hold the duck through pauses shorter than this (s)
   const VOICE_KEY = 'shaket.voice';
   const savedVoice = (() => { try { return localStorage.getItem(VOICE_KEY); } catch (e) { return null; } })();
@@ -1636,6 +1661,17 @@
       state.master = +master.value; setFill(master);
       if (ctx) { masterGain.gain.setTargetAtTime(curve(state.master), ctx.currentTime, 0.15); setVoiceOut(0.15); }
     });
+    // guided-voice volume (v0.10): same scroll-safe slider; live, smooth (0.1 s) changes while a session plays
+    const vv = $('#voiceVol');
+    const vvText = () => vv.setAttribute('aria-valuetext', Math.round(+vv.value * 100) + '%');
+    vv.value = state.voiceVol;
+    scrollSafeRange(vv);
+    setFill(vv); vvText();
+    vv.addEventListener('input', () => {
+      state.voiceVol = +vv.value; setFill(vv); vvText();
+      if (ctx) setVoiceOut(0.1);
+      try { localStorage.setItem(VOICE_VOL_KEY, String(state.voiceVol)); } catch (e) { /* private mode: not remembered */ }
+    });
     $('#play').addEventListener('click', () => (state.playing ? pause() : play()));
     document.addEventListener('keydown', (e) => {
       if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); state.playing ? pause() : play(); }
@@ -1764,7 +1800,12 @@
     tickTimer();
   }
 
-  if (QS.get('debug')) window.__shaket = { get ctx() { return ctx; }, nodes, loops, state, get engine() { return LOOPS ? 'loops' : 'live'; } };
+  if (QS.get('debug')) window.__shaket = { get ctx() { return ctx; }, nodes, loops, state, get engine() { return LOOPS ? 'loops' : 'live'; },
+    // v0.10: voice-path numbers for tests (target gains, not the in-flight ramp values)
+    // total = sub-threshold gain from a voice file to the output (the limiter's makeup and voiceTrim cancel)
+    voiceInfo: () => ({ bus: voiceBus && voiceBus.gain.value, out: voiceLevel(), trim: 1 / limMakeup, compMakeup, limMakeup,
+      total: (voiceBus ? voiceBus.gain.value : 0.95) * voiceLevel(), duck: duckLevel(), live: voiceOut && voiceOut.gain.value,
+      v09: 0.95 * curve(state.master) * Math.min(compMakeup, VOICE_TRIM_MAX) }) };
   try { prepAudio(); } catch (e) { ctx = null; } // early, off the tap path; play() retries if this failed
   loadLocalVoices().finally(() => { buildUI(); render(); });
 })();
