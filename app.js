@@ -1390,7 +1390,7 @@
   }
 
   // Local-only extra voices (e.g. a private recorded voice that ships only inside the APK):
-  // voices-local.json = [{"id":"natan","name":"..."}], never published. Missing/404/HTML -> ignored.
+  // voices-local.json = [{"id":"<id>","name":"..."}], never published. Missing/404/HTML -> ignored.
   async function loadLocalVoices() {
     if (location.protocol === 'file:') return;
     try {
@@ -1416,7 +1416,7 @@
   // ---------- remote voices (APK only, v0.9) ----------
   // The APK ships only some voices; a voice file missing locally (the wrapper answers a real 404) is fetched from
   // the public site (same relative path, CORS *) and kept in the Cache API, so it plays offline afterwards.
-  // Local-only voices (voices-local.json, e.g. 'natan') are never on the site and are never fetched remotely.
+  // Local-only voices (voices-local.json) are never on the site and are never fetched remotely.
   const REMOTE_BASE = (QS.get('debug') && QS.get('remote')) || 'https://natan-calm.akeyo.io/'; // ?debug=1&remote=<base> for tests
   const VOICE_CACHE = 'shaket-voices-v1';
   const canRemote = (voiceId) => ANDROID && voiceId !== 'natan' && !VOICES.some((v) => v.id === voiceId && v.local);
