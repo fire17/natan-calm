@@ -1,5 +1,9 @@
 'use strict';
-/* שקט v0.10 — Web Audio meditation app. UI is Hebrew-only (RTL); guided meditations in Hebrew or Russian.
+/* שקט v0.11 — Web Audio meditation app. UI is Hebrew-only (RTL); guided meditations in Hebrew or Russian.
+   v0.11: the playing session's tile fills in its reading direction with elapsed / total time (audio clock;
+   clip lengths from voice/<id>/durations.json, written by tools/durations.py).
+   v0.10.2: one master limiter (−1.5 dBFS, ratio 20, 2 ms attack) is the last node before every output route — the
+   loud voice + the summed music/nature/binaural mix can no longer pass 0 dBFS; masterTrim cancels its makeup gain.
    v0.10: guided-voice volume slider (default ≈ +6 dB over v0.9, up to ≈ +12 dB; a limiter on the voice path keeps
    it from clipping), deeper ducking under the voice (−12 dB; sleep mode −8 dB).
    v0.9: meditation-language chips (UI no longer switches language), scroll-safe sliders/taps for touch phones,
@@ -583,7 +587,7 @@
   };
 
   // ---------- audio core ----------
-  let ctx = null, out, masterGain, comp, duck, voiceBus, voiceFade, voiceOut, voiceLim, voiceTrim, voiceGate, bellBus, reverbIn, buf = {}, nodes = {};
+  let ctx = null, out, masterGain, comp, duck, voiceBus, voiceFade, voiceOut, voiceLim, voiceTrim, voiceGate, masterLim, masterTrim, bellBus, reverbIn, buf = {}, nodes = {};
   const ANDROID = typeof window.Android !== 'undefined'; // the APK's WebView wrapper (JS bridge)
   let pauseToken = 0;
   const QS = (() => { try { return new URLSearchParams(location.search); } catch (e) { return { get: () => null }; } })();
@@ -695,8 +699,9 @@
     new Uint8Array(b, 44).fill(128); // 8-bit PCM silence
     return URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
   }
-  // Both final nodes (music bus after the compressor, and the uncompressed voice) feed the same output.
-  const finals = () => [comp, voiceGate];
+  // Both buses (music after the compressor, and the uncompressed voice) meet in the master limiter; its trim gain
+  // is the one final node that feeds the output.
+  const finals = () => [masterTrim];
   function routeOutput() {
     // Android WebView: straight to ctx.destination. The stream -> <audio> hop only exists for the iOS
     // silent switch; on Android it adds a resampler/buffer stage that can glitch. Background playback
@@ -741,7 +746,10 @@
   // allowed everywhere). Noise beds + reverb IR are generated in idle-time chunks, so the first tap only
   // resumes + starts. Sources then start staggered under a silent warm-up instead of all in one quantum.
   const WARMUP = 0.5, STAGGER_MS = 200, VOICE_TRIM_MAX = 1.5;
+  // Chromium's compressor makeup = (1 / gain at 0 dBFS)^0.6; for −1.5 dB / ratio 20 / knee 0 that is ≈ 1.10 (+0.86 dB)
+  const MASTER_LIM_MAKEUP_EST = Math.pow(1 / Math.pow(10, (-1.5 + 1.5 / 20) / 20), 0.6);
   let conv = null, prepared = null, urgent = false, started = false, layersLive = false, compMakeup = 1, limMakeup = 1;
+  let masterMakeup = MASTER_LIM_MAKEUP_EST;
   const idle = (fn) => (!urgent && window.requestIdleCallback
     ? requestIdleCallback(fn, { timeout: 250 }) : setTimeout(fn, urgent ? 0 : 16));
 
@@ -768,6 +776,15 @@
     voiceLim.attack.value = 0.001; voiceLim.release.value = 0.1;
     voiceTrim = gain(1);
     chain(voiceBus, voiceFade, voiceOut, voiceLim, voiceTrim, voiceGate);
+
+    // v0.10.2: master limiter after the point where voice and music meet — the last stage before every output route
+    // (ctx.destination or the MediaStream). masterTrim cancels its built-in makeup (measured below; analytic estimate
+    // until then), so material below −1.5 dBFS passes at unity and only real overs get limited.
+    masterLim = ctx.createDynamicsCompressor();
+    masterLim.threshold.value = -1.5; masterLim.knee.value = 0; masterLim.ratio.value = 20;
+    masterLim.attack.value = 0.002; masterLim.release.value = 0.15;
+    masterTrim = gain(1 / MASTER_LIM_MAKEUP_EST);
+    comp.connect(masterLim); voiceGate.connect(masterLim); masterLim.connect(masterTrim);
     routeOutput();
 
     // duck bus: music + nature (+ their reverb) dip under the guided voice; binaural bypasses it
@@ -835,7 +852,32 @@
       }, () => null);
     } catch (e) { return Promise.resolve(null); }
   }
+  // v0.10.2: the master limiter's makeup, measured at steady state — a −20 dBFS sine for 1 s through an identical
+  // compressor, output/input RMS over the last 0.25 s (well past the ~8k-sample settling the 2048 reading misses).
+  function steadyMakeupOf(model) {
+    const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!OAC) return Promise.resolve(null);
+    try {
+      const sr = 44100, n = sr, oc = new OAC(1, n, sr), b = oc.createBuffer(1, n, sr), x = b.getChannelData(0);
+      for (let i = 0; i < n; i++) x[i] = 0.1 * Math.sin(2 * Math.PI * 1000 * i / sr);
+      const s = oc.createBufferSource(), c = oc.createDynamicsCompressor();
+      ['threshold', 'knee', 'ratio', 'attack', 'release'].forEach((k) => { c[k].value = model[k].value; });
+      s.buffer = b; chain(s, c, oc.destination); s.start(0);
+      return new Promise((res) => {
+        oc.oncomplete = (e) => res(e.renderedBuffer);
+        const p = oc.startRendering(); if (p && p.then) p.then(res, () => res(null));
+      }).then((r) => {
+        if (!r) return null;
+        const y = r.getChannelData(0), from = n - Math.floor(sr / 4);
+        let si = 0, so = 0;
+        for (let i = from; i < n; i++) { si += x[i] * x[i]; so += y[i] * y[i]; }
+        const v = Math.sqrt(so / si);
+        return v > 0.5 && v < 8 ? v : null;
+      }, () => null);
+    } catch (e) { return Promise.resolve(null); }
+  }
   function measureMakeup() {
+    steadyMakeupOf(masterLim).then((v) => { if (v) { masterMakeup = v; masterTrim.gain.setTargetAtTime(1 / v, ctx.currentTime, 0.05); } });
     makeupOf(comp).then((v) => { if (v) { compMakeup = v; setVoiceOut(0.05); } });
     makeupOf(voiceLim, 22050).then((v) => { if (v) { limMakeup = v; voiceTrim.gain.setTargetAtTime(1 / v, ctx.currentTime, 0.05); } });
   }
@@ -1402,6 +1444,7 @@
       const pauseAfter = list[i].pauseAfterSec || 0, last = i === list.length - 1;
       t = Math.max(t, ctx.currentTime + 0.9);
       const start = t;
+      progSeg(tok, i, start, b ? b.duration : 0); // real clip length + any loading slip
       if (b) {
         if (first) { rampDuck(DUCK, start + 0.4 - ctx.currentTime); first = false; } // from wherever it is now
         else if (!held) { g.setValueAtTime(1, start - 0.8); g.exponentialRampToValueAtTime(DUCK, start - 0.8 + DUCK_IN); }
@@ -1422,6 +1465,7 @@
       if (!last) pending = loadSeg(vid, list[i + 1]); // keep at most ~3 decoded buffers alive
     }
     await waitUntil(lastEnd + DUCK_OUT, live);
+    return live(); // true = played to the end (not stopped)
   }
   function stopVoice() {
     voice.token++;
@@ -1429,6 +1473,7 @@
     voice.sources = [];
     if (ctx) rampDuck(1, DUCK_OUT);
     voice.session = null; voice.caption = '';
+    progStop();
     render();
   }
   function startVoice(s) {
@@ -1438,8 +1483,96 @@
     voice.session = s.id;
     if (voice.avail[voice.id + '/' + s.id] === 'remote') cacheSession(voice.id, s);
     const tok = voice.token;
-    runVoice(s, tok).catch(() => {}).finally(() => { if (tok === voice.token) stopVoice(); });
+    progStart(s, voice.id, tok);
+    runVoice(s, tok).then((done) => { if (done) progDone(tok); }, () => {})
+      .finally(() => { if (tok === voice.token) stopVoice(); });
     render();
+  }
+  // ---------- session progress (v0.11) ----------
+  // The playing session's tile fills in its reading direction (Hebrew RTL from the right, Russian LTR from the left)
+  // and shows "elapsed / total". Elapsed runs on the audio clock (ctx.currentTime) minus any loading slip, so pausing
+  // (ctx.suspend) freezes it and resume continues; ducking and sleep mode are untouched. Total = DUCK_IN + clips +
+  // every pause but the last (never waited) + DUCK_OUT — the player's own timeline. Clip lengths come from
+  // voice/<id>/durations.json (tools/durations.py), fetched like the voice files (local, else the site + Cache API on
+  // the APK); each clip's decoded length replaces it once scheduled. No manifest -> estimated from `dur` ("~" total).
+  // DOM: one transform (scaleX) + one text node per tick, written only when changed, ≤ 4×/s.
+  const PROG_MS = 250, durCache = {};
+  let prog = null;
+  function voiceDurations(voiceId) {
+    if (!durCache[voiceId]) {
+      durCache[voiceId] = (async () => {
+        const rel = `voice/${voiceId}/durations.json`;
+        let r = null;
+        try { r = await fetch(rel, { cache: 'no-cache' }); } catch (e) { r = null; }
+        if (!isAudio(r)) r = canRemote(voiceId) ? await remoteFetch(rel) : null; // isAudio = ok + not an SPA html page
+        if (!r) return null;
+        try { const j = await r.json(); return j && typeof j === 'object' ? j : null; } catch (e) { return null; }
+      })().then((j) => { if (!j) delete durCache[voiceId]; return j; }); // missing: retry on a later session
+    }
+    return durCache[voiceId];
+  }
+  const pauseSum = (s) => s.segments.slice(0, -1).reduce((a, g) => a + (g.pauseAfterSec || 0), 0);
+  function estClips(s) { // nominal minutes ("5 דק׳" / "5 мин") spread over the segments; 8 s/segment without one
+    const n = s.segments.length, m = parseFloat(String(s.dur || '').replace(',', '.'));
+    const speech = (m > 0 ? m * 60 : n * 8 + pauseSum(s)) - DUCK_IN - DUCK_OUT - pauseSum(s);
+    return s.segments.map(() => Math.max(2, speech / n));
+  }
+  const progTotal = (p) => DUCK_IN + p.clips.reduce((a, c) => a + c, 0) + pauseSum(p.s) + DUCK_OUT;
+  function progStart(s, voiceId, tok) {
+    progStop();
+    const u = ui.prog[s.id];
+    if (!u) return;
+    u.gen++;
+    prog = { tok, s, u, clips: estClips(s), known: s.segments.map(() => false), manifest: false,
+      t0: null, slip: 0, el: 0, fake: 0, done: false, sc: -1, iv: 0 };
+    u.f.style.transform = 'scaleX(0)';
+    u.b.classList.add('in-prog');
+    voiceDurations(voiceId).then((j) => {
+      const d = j && j[s.id], p = prog;
+      if (!p || p.tok !== tok || !d || !Array.isArray(d.clips) || d.clips.length !== s.segments.length) return;
+      d.clips.forEach((c, i) => { if (!p.known[i] && c >= 0) p.clips[i] = +c; });
+      p.manifest = true; progTick();
+    });
+    prog.iv = setInterval(progTick, PROG_MS);
+    progTick();
+  }
+  // segment i is scheduled at `start` (audio clock) and lasts `dur`. The clock is anchored on the first scheduled
+  // segment, not on the tap: a context that was suspended can report a stale currentTime until it really runs.
+  function progSeg(tok, i, start, dur) {
+    const p = prog;
+    if (!p || p.tok !== tok) return;
+    let nom = DUCK_IN;
+    for (let j = 0; j < i; j++) nom += p.clips[j] + (p.s.segments[j].pauseAfterSec || 0);
+    if (p.t0 == null) p.t0 = start - nom;
+    p.clips[i] = dur; p.known[i] = true;
+    p.slip = start - p.t0 - nom; // > 0 when a clip loaded late (the player waited): the time holds meanwhile
+  }
+  function progTick() {
+    const p = prog;
+    if (!p || !ctx) return;
+    const total = progTotal(p);
+    let e = p.done ? total : p.t0 == null ? 0 : ctx.currentTime - p.t0 - p.slip + p.fake;
+    if (e > p.el - 1.5) e = Math.max(p.el, e); // never ticks backwards for jitter; a real resync (> 1.5 s) is taken
+    e = Math.min(total, Math.max(0, e));
+    p.el = e;
+    const sc = total > 0 ? Math.round((e / total) * 1000) / 1000 : 0;
+    if (sc !== p.sc) { p.sc = sc; p.u.f.style.transform = `scaleX(${sc})`; }
+    const est = !p.manifest && p.known.some((k) => !k);
+    const tot = fmt(Math.round(total) * 1000);
+    setText(p.u.t, fmt(Math.round(e) * 1000) + ' / ' + (est ? '\u2066~' + tot + '\u2069' : tot)); // LRI…PDI keeps "~" on its number in RTL
+  }
+  function progDone(tok) { if (prog && prog.tok === tok) { prog.done = true; progTick(); } }
+  // natural end: the fill completes, then fades; a stop just fades from where it is
+  function progStop() {
+    const p = prog;
+    if (!p) return;
+    prog = null; clearInterval(p.iv);
+    const u = p.u, g = ++u.gen;
+    setTimeout(() => {
+      if (u.gen !== g) return;
+      u.b.classList.remove('in-prog');
+      setTimeout(() => { if (u.gen === g) u.f.style.transform = 'scaleX(0)'; }, 1600); // after the fade: reset unseen
+    }, p.done ? 700 : 0);
   }
   async function exists(url, opts) {
     try {
@@ -1504,7 +1637,7 @@
   // ---------- UI ----------
   const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
   const setFill = (r) => r.style.setProperty('--p', (r.value * 100) + '%');
-  const ui = { presets: {}, modes: {}, timers: {}, layers: {}, sessions: {}, voices: {}, voiceNames: {}, voiceHints: {}, sleepDurs: {} };
+  const ui = { presets: {}, modes: {}, timers: {}, layers: {}, sessions: {}, prog: {}, voices: {}, voiceNames: {}, voiceHints: {}, sleepDurs: {} };
 
   // ---------- scroll-safe touch (v0.9) ----------
   // Feedback from a real phone: scrolling the page kept changing the sound. Two guards:
@@ -1633,8 +1766,11 @@
       const b = el('button', 'chip session'); b.type = 'button';
       b.lang = sessionLang(s); // session names come from the session itself
       if (b.lang === 'ru') b.dir = 'ltr';
-      const nm = el('span'), du = el('small'); nm.textContent = s.name; du.textContent = s.dur || '';
-      b.append(nm, du);
+      const nm = el('span'), du = el('small', 'pdur'), pf = el('i', 'prog'), pt = el('small', 'ptime');
+      nm.textContent = s.name; du.textContent = s.dur || '';
+      pf.setAttribute('aria-hidden', 'true'); // pt inherits the tile direction: elapsed reads first
+      b.append(pf, nm, du, pt);
+      ui.prog[s.id] = { b, f: pf, t: pt, gen: 0 };
       b.disabled = true;
       b.addEventListener('click', () => (voice.session === s.id ? stopVoice() : startVoice(s)));
       $('#sessions').append(b); ui.sessions[s.id] = b;
@@ -1805,7 +1941,16 @@
     // total = sub-threshold gain from a voice file to the output (the limiter's makeup and voiceTrim cancel)
     voiceInfo: () => ({ bus: voiceBus && voiceBus.gain.value, out: voiceLevel(), trim: 1 / limMakeup, compMakeup, limMakeup,
       total: (voiceBus ? voiceBus.gain.value : 0.95) * voiceLevel(), duck: duckLevel(), live: voiceOut && voiceOut.gain.value,
-      v09: 0.95 * curve(state.master) * Math.min(compMakeup, VOICE_TRIM_MAX) }) };
+      v09: 0.95 * curve(state.master) * Math.min(compMakeup, VOICE_TRIM_MAX) }),
+    // v0.10.2: master limiter state (reduction = current gain reduction in dB, ≤ 0)
+    // v0.11: session progress; progSeek(f) moves the displayed position only (headless clocks may be frozen)
+    progInfo: () => (prog ? { sid: prog.s.id, elapsed: prog.el, total: progTotal(prog), scale: prog.sc, slip: prog.slip,
+      t0: prog.t0, clips: prog.clips.slice(), manifest: prog.manifest, text: prog.u.t.textContent,
+      transform: prog.u.f.style.transform } : null),
+    progSeek: (f) => { const p = prog; if (!p) return null; const now = p.t0 == null ? 0 : ctx.currentTime - p.t0 - p.slip;
+      p.el = 0; p.fake = f * progTotal(p) - now; progTick(); return p.el; },
+    limiterInfo: () => ({ makeup: masterMakeup, est: MASTER_LIM_MAKEUP_EST, trim: masterTrim && masterTrim.gain.value,
+      reduction: masterLim ? masterLim.reduction : null }) };
   try { prepAudio(); } catch (e) { ctx = null; } // early, off the tap path; play() retries if this failed
   loadLocalVoices().finally(() => { buildUI(); render(); });
 })();

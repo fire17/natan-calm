@@ -266,6 +266,24 @@ input[type="range"]:focus-visible { outline: 2px solid var(--teal-soft); outline
 }
 .session span { overflow-wrap: anywhere; hyphens: auto; -webkit-hyphens: auto; }
 .session small { margin: 0; font-size: 12.5px; }
+/* v0.11: progress fill of the playing session — grows in reading direction (RTL from the right, LTR from the left),
+   transform-only (no layout); JS writes scaleX ≤ 4×/s and the linear transition smooths the steps */
+.session { position: relative; overflow: hidden; isolation: isolate; }
+.session > span, .session > small { position: relative; z-index: 1; }
+.session .prog {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  transform: scaleX(0); transform-origin: 100% 50%;
+  background: linear-gradient(to left, rgba(63,184,176,.30), rgba(127,220,207,.20) 70%, rgba(240,196,150,.26));
+  opacity: 0; transition: transform .3s linear, opacity 1.4s ease;
+}
+.session[dir="ltr"] .prog {
+  transform-origin: 0 50%;
+  background: linear-gradient(to right, rgba(63,184,176,.30), rgba(127,220,207,.20) 70%, rgba(240,196,150,.26));
+}
+.session.in-prog .prog { opacity: 1; transition: transform .3s linear, opacity .6s ease; }
+.session .ptime { display: none; font-variant-numeric: tabular-nums; color: var(--teal-soft); letter-spacing: .02em; }
+.session.in-prog .ptime { display: block; }
+.session.in-prog .pdur { display: none; }
 .chip:disabled { cursor: default; opacity: .5; }
 .chip:disabled:hover { background: rgba(255,255,255,.04); }
 .voice.unready .sessions { filter: saturate(.6); }
@@ -348,4 +366,5 @@ body.sleeping { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .breath { display: none; }
+  .session .prog { display: none; } /* no moving fill: the elapsed / total numbers only */
 }
