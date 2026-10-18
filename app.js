@@ -1,5 +1,12 @@
 'use strict';
-/* שקט v0.11 — Web Audio meditation app. UI is Hebrew-only (RTL); guided meditations in Hebrew or Russian.
+/* שקט v0.13 — Web Audio meditation app. UI is Hebrew-only (RTL); guided meditations in Hebrew or Russian.
+   v0.13: "I am" affirmations — personal settings (user profiles: name + gender, pre-recorded name lines from the private
+   APK-only voice-private/, else the name line spoken by the phone's voice), a personal, reorderable affirmation list
+   (library + own sentences), and a guided 'aff' session per language. Own sentences use the phone's TTS
+   (APK: Android.speak bridge; web: speechSynthesis; none: caption only), ducking the music while it speaks.
+   v0.12: remote control — pair two phones (player ⇄ controller) with a 6-digit code; the controller's controls drive the
+   player through the same functions the UI uses. End-to-end encrypted (remote.js); transport-agnostic, and only the
+   local test transport (?rc=local, BroadcastChannel) exists until a network relay is approved.
    v0.11: the playing session's tile fills in its reading direction with elapsed / total time (audio clock;
    clip lengths from voice/<id>/durations.json, written by tools/durations.py).
    v0.10.2: one master limiter (−1.5 dBFS, ratio 20, 2 ms attack) is the last node before every output route — the
@@ -64,6 +71,29 @@
       medLang: 'שפת המדיטציה', dlFirst: '⬇ יורד בפעם הראשונה',
       night: 'לילה טוב', sleepExit: 'יציאה ממצב שינה', sleepBack: 'חזרה',
       foot: 'צלילים לנשימה ולמנוחה',
+      // v0.12 remote control
+      rcTitle: 'שליטה מרחוק', rcOffNote: 'השירות טרם הופעל', rcRolesAria: 'תפקיד הטלפון הזה',
+      rcRoleOff: 'כבוי', rcRolePlayer: 'נגן', rcRolePlayerSub: 'מקבל פקודות', rcRoleCtrl: 'שלט', rcRoleCtrlSub: 'שולט בנגן',
+      rcCodeLbl: 'קוד התאמה — מקלידים אותו בטלפון השולט', rcCodeLeft: (s) => 'בתוקף עוד ' + s, rcNewCode: 'קוד חדש',
+      rcPairedNote: 'טלפון שולט מחובר. אפשר להוסיף שלט נוסף עם קוד חדש.', rcCodeIn: 'קוד מהטלפון המנגן (6 ספרות)', rcConnect: 'התחברות',
+      rcLocalPlay: 'לנגן גם אצלי', rcUnpair: 'נתק', rcBadCode: 'הקוד לא נמצא או שפג תוקפו', rcCodeFmt: 'יש להקליד 6 ספרות',
+      rcWorking: 'מתחבר…', rcNoCrypto: 'הצפנה לא זמינה בדפדפן הזה',
+      'rc.connected': 'מחובר', 'rc.connecting': 'מתחבר…', 'rc.disconnected': 'לא מחובר',
+      rcSeenNow: 'נראה עכשיו', rcSeenAgo: (m) => `נראה לפני ${m} דק׳`, rcSeenAt: (h) => 'נראה לאחרונה ' + h, rcSeenNever: 'עוד לא נראה',
+      rcBannerCtrl: 'שולט בטלפון המחובר', rcBannerPlayer: 'נשלט מרחוק', rcTapAudio: ' · הקישו על המסך כדי לאפשר צליל',
+      // v0.13 personal settings + affirmations
+      profTitle: 'הגדרות אישיות', profUsers: 'משתמשים', profPicks: 'שמות שהוקלטו בקול החם', profName: 'שם', profNamePh: 'איך קוראים לך?',
+      profG: 'פנייה', gM: 'זכר', gF: 'נקבה', profAdd: '+ משתמש חדש', profHello: (n) => 'שלום ' + n, profNoName: 'ללא שם', profNoG: 'בלי פנייה',
+      profTtsHint: 'אפשר לבקש משירה הקלטה בקול החם', tagPhoneName: 'השם בקול הטלפון', tagWarm: 'השם בקול החם', tagPhone: 'קול הטלפון',
+      profDel: (n) => 'מחיקת ' + n, delSure: 'למחוק?',
+      affTitle: 'האפירמציות שלי', affGPrompt: 'כדי שכל משפט ידבר אליך נכון — בחרו פנייה (זכר או נקבה) בהגדרות האישיות.', affGGo: 'להגדרות',
+      affLangNote: (l) => (l === 'ru' ? 'המשפטים יושמעו ברוסית — לפי שפת המדיטציה' : 'המשפטים יושמעו בעברית — לפי שפת המדיטציה'),
+      affEmpty: 'הרשימה ריקה — מוסיפים משפטים מהספרייה או משפט משלכם.', affLibBtn: '+ הוספה מהספרייה', affOwnBtn: '+ משפט משלי',
+      affOwnAdd: 'הוספה', affOwnPh: 'למשל: אני רגועה ושמחה', affOwnNote: 'משפט משלכם יושמע בקול הטלפון',
+      affOwnNoTts: 'בטלפון הזה אין קול להקראה בשפה הזו — המשפט יוצג ככיתוב בזמן ההפסקה',
+      affWa: 'שלחו לשירה בוואטסאפ משפטים שתרצו בקול החם', affPause: (n) => `הפסקה אחרי כל משפט · ${n} שנ׳`, sec: (n) => `${n} שניות`,
+      affTwice: 'לחזור על כל משפט פעמיים', affLibDone: 'סיום', affDrag: 'גררו כדי לשנות סדר',
+      affUp: (x) => 'הזזה למעלה: ' + x, affDown: (x) => 'הזזה למטה: ' + x, affRm: (x) => 'הסרה: ' + x,
       'mode.alpha': 'רוגע', 'mode.alpha.sub': 'אלפא · 10Hz',
       'mode.delta': 'שינה', 'mode.delta.sub': 'דלתא · 2.5Hz',
       'mode.beta': 'מיקוד', 'mode.beta.sub': 'בטא · 14Hz',
@@ -97,7 +127,7 @@
       'layer.waves': 'Волны', 'layer.rain': 'Дождь', 'layer.wind': 'Листва на ветру', 'layer.birds': 'Птицы', 'layer.stream': 'Ручей',
       'preset.quiet': 'Минута тишины', 'preset.sleep': 'Перед сном', 'preset.sea': 'Море', 'preset.forest': 'Лес под дождём',
       'voice.marin': 'Голос 1 — мягкий', 'voice.shimmer': 'Голос 2 — светлый',
-      'voice.sage': 'Голос 3 — спокойный', 'voice.cedar': 'Голос 4 — глубокий', 'voice.natan': 'Голос 5 — Натан',
+      'voice.sage': 'Голос 3 — спокойный', 'voice.cedar': 'Голос 4 — глубокий',
     },
   };
   // v0.9: the UI is always Hebrew (user feedback: "only the meditations in Russian"). The ru table stays for a
@@ -713,7 +743,8 @@
         outEl = mediaEl();
         outEl.srcObject = streamDest.stream;
         // the OS (lock screen, headphones unplugged, interruption) paused our element -> mirror it
-        outEl.addEventListener('pause', (e) => { if (e.target === outEl && state.playing) pause(); });
+        // (not while mirroring a remote player: that "playing" is the other phone's, this element is silent on purpose)
+        outEl.addEventListener('pause', (e) => { if (e.target === outEl && state.playing && !rcMirror()) pause(); });
         finals().forEach((n) => n.connect(streamDest));
         return;
       }
@@ -1239,7 +1270,9 @@
       g.cancelScheduledValues(t); g.setValueAtTime(g.value, t);
       g.linearRampToValueAtTime(0, t + 3);
     });
-    setTimeout(() => { if (tok === pauseToken && !state.playing) { ctx.suspend(); stopOutput(); } }, 3300);
+    ttsCancel(); // v0.13: a phone-voice line stops with the sound; the player repeats it after resume
+    // (a mirroring remote-control phone shows the other phone's "playing" but is itself silent: suspend it too)
+    setTimeout(() => { if (tok === pauseToken && (!state.playing || rcMirror())) { ctx.suspend(); stopOutput(); } }, 3300);
     if (sleep.on) exitSleep(true); // pausing (lock screen, headphones) ends sleep mode
     render();
   }
@@ -1343,7 +1376,8 @@
     id: VOICES.some((v) => v.id === savedVoice) ? savedVoice : DEFAULT_VOICE,
     session: null, token: 0, sources: [], avail: {}, checked: false, caption: '',
   };
-  const segUrl = (voiceId, seg) => `voice/${voiceId}/${seg.file}`;
+  // v0.13: seg.priv = a private APK-only clip under voice-private/ (never on the site, never fetched remotely)
+  const segUrl = (voiceId, seg) => `${seg.priv ? 'voice-private' : 'voice'}/${voiceId}/${seg.file}`;
   const has = (voiceId, sessionId) => !!voice.avail[voiceId + '/' + sessionId];
   const langSessions = () => SESSIONS.filter((s) => sessionLang(s) === medLang);
   const voiceHasAny = (voiceId) => langSessions().some((s) => has(voiceId, s.id)); // in the meditation language
@@ -1367,7 +1401,7 @@
       list.forEach((v) => {
         if (!v || typeof v.id !== 'string' || !/^[a-z0-9_-]+$/.test(v.id) || typeof v.name !== 'string') return;
         if (VOICES.some((x) => x.id === v.id)) return;
-        VOICES.push({ id: v.id, name: v.name, local: true });
+        VOICES.push({ id: v.id, name: v.name, name_ru: typeof v.name_ru === 'string' ? v.name_ru : undefined, local: true });
       });
       if (savedVoice && voice.id !== savedVoice && VOICES.some((v) => v.id === savedVoice)) voice.id = savedVoice;
     } catch (e) { /* no local voices */ }
@@ -1403,13 +1437,15 @@
     let r = null;
     try { r = await fetch(rel); } catch (e) { r = null; }
     if (isAudio(r)) return r;
-    return canRemote(voiceId) ? remoteFetch(rel) : null;
+    return canRemote(voiceId) && !seg.priv ? remoteFetch(rel) : null;
   }
   // first remote play: quietly cache the whole session (sequential, small files), so it all works offline next time
   async function cacheSession(voiceId, s) {
     const cache = await openCache();
     if (!cache) return;
-    for (const seg of s.segments) {
+    for (const sg of s.segments) {
+      let seg = sg; while (seg && (seg.priv || seg.tts)) seg = seg.alt; // v0.13: private / phone-voice lines never come from the site
+      if (!seg) continue;
       const url = REMOTE_BASE + segUrl(voiceId, seg);
       try {
         if (await cache.match(url)) continue;
@@ -1421,7 +1457,22 @@
     if (voice.avail[k] === 'remote') { voice.avail[k] = 'cached'; renderVoice(); }
   }
 
+  // v0.13: a segment may carry a fallback chain (seg.alt): private name clip -> phone-voice (TTS) line -> plain clip.
+  // The first link that works is adopted into the segment itself (text/tts/lang), so captions match what is heard.
+  // A TTS link resolves to TTS_SEG (spoken live by runVoice); `needTts` links are skipped when no phone voice exists.
+  const TTS_SEG = { tts: true };
   async function loadSeg(voiceId, seg) {
+    for (let s = seg; s; s = s.alt) {
+      let b = null;
+      if (s.tts) { if (s.needTts && !ttsAvailable(s.lang)) continue; b = TTS_SEG; }
+      else b = await loadClip(voiceId, s);
+      if (!b) continue;
+      if (s !== seg) { seg.text = s.text; seg.tts = !!s.tts; seg.lang = s.lang; seg.used = s; }
+      return b;
+    }
+    return null;
+  }
+  async function loadClip(voiceId, seg) {
     try {
       const r = await voiceFetch(voiceId, seg);
       if (!r) return null;
@@ -1444,6 +1495,23 @@
       const pauseAfter = list[i].pauseAfterSec || 0, last = i === list.length - 1;
       t = Math.max(t, ctx.currentTime + 0.9);
       const start = t;
+      if (b === TTS_SEG) { // v0.13: a line spoken by the phone's own voice (outside Web Audio): duck, speak, wait for its end
+        const seg = list[i];
+        progSeg(tok, i, start, seg.est || 3);
+        if (first) { rampDuck(DUCK, start + 0.4 - ctx.currentTime); first = false; }
+        else if (!held) { g.setValueAtTime(1, start - 0.8); g.exponentialRampToValueAtTime(DUCK, start - 0.8 + DUCK_IN); }
+        if (!last) pending = loadSeg(vid, list[i + 1]); // preload the next clip while the phone speaks
+        await waitUntil(start, live); if (!live()) return;
+        voice.caption = seg.text; renderVoice();
+        await speakSeg(seg, live);
+        if (!live()) return;
+        lastEnd = Math.max(ctx.currentTime, start);
+        progSeg(tok, i, start, lastEnd - start);
+        held = !last && pauseAfter < HOLD_BELOW;
+        if (!held) { const r = ctx.currentTime; g.cancelScheduledValues(r); g.setValueAtTime(DUCK, r); g.exponentialRampToValueAtTime(1, r + DUCK_OUT); }
+        t = lastEnd + pauseAfter;
+        continue;
+      }
       progSeg(tok, i, start, b ? b.duration : 0); // real clip length + any loading slip
       if (b) {
         if (first) { rampDuck(DUCK, start + 0.4 - ctx.currentTime); first = false; } // from wherever it is now
@@ -1469,6 +1537,7 @@
   }
   function stopVoice() {
     voice.token++;
+    ttsCancel();
     voice.sources.forEach((s) => { try { s.stop(); } catch (e) { /* not started */ } });
     voice.sources = [];
     if (ctx) rampDuck(1, DUCK_OUT);
@@ -1477,6 +1546,7 @@
     render();
   }
   function startVoice(s) {
+    if (s.aff && !affPrepare(s)) return; // v0.13: affirmations are built from the personal list at start time
     if (!has(voice.id, s.id)) return;
     if (!state.playing) play(); // still inside the tap
     stopVoice();
@@ -1488,6 +1558,214 @@
       .finally(() => { if (tok === voice.token) stopVoice(); });
     render();
   }
+  // ---------- "I am" affirmations (v0.13) ----------
+  // A guided session per meditation language ('aff' / 'ru_aff') built at start time from the personal list:
+  // open line -> the user's affirmations in order (each: spoken [twice], then a calm pause) -> close line.
+  // Library + clips: affirmations.json (= notes/affirmations/library.json), voice/<v>/aff/<lang>-<g>/<id>.mp3.
+  // Name lines: the active profile's pre-recorded clip voice-private/<v>/aff/<lang>-<g>/<open|close id>-<nameKey>.mp3
+  // (APK only; voice-private/names.json maps nameKey -> {he, ru, g}; missing on the site = no pre-recorded names),
+  // else the whole name line spoken by the phone's voice (TTS), else the plain clip. Custom sentences are always TTS.
+  // Everything personal (profiles, list, pause, repeat) lives in localStorage on this phone only.
+  const AFF_KEY = 'shaket.aff', PROF_KEY = 'shaket.profiles', AFF_SIDS = { he: 'aff', ru: 'ru_aff' };
+  const AFF_DEFAULT = ['health_01', 'health_03', 'love_01', 'love_07', 'abundance_02', 'abundance_05',
+    'joy_03', 'joy_04', 'strength_02', 'strength_04', 'life_02', 'life_05'];
+  const AFF_PAUSE_MIN = 4, AFF_PAUSE_MAX = 15, AFF_PAUSE_DEF = 8, AFF_REPEAT_GAP = 3, AFF_OPEN_PAUSE = 5;
+  const AFF_NAME_MAX = 30, AFF_TEXT_MAX = 160, AFF_LIST_MAX = 80, PROF_MAX = 12;
+  const lsGet = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode: not remembered */ } };
+  const aff = { lib: null, names: null, list: [], pause: AFF_PAUSE_DEF, twice: false, rot: 0 };
+  const profs = { list: [], active: null };
+  const newId = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const isG = (g) => g === 'm' || g === 'f';
+  // validators (also used by rcValid for the local-only keys)
+  const affEntryOk = (e) => !!e && typeof e === 'object' && (typeof e.id === 'string'
+    ? /^[a-z]+_\d+$/.test(e.id) : typeof e.c === 'string' && e.c.trim().length > 0 && e.c.length <= AFF_TEXT_MAX && LANGS.includes(e.lang) && typeof e.cid === 'string');
+  const affListOk = (v) => Array.isArray(v) && v.length <= AFF_LIST_MAX && v.every(affEntryOk);
+  const profOk = (p) => !!p && typeof p.id === 'string' && typeof p.name === 'string' && p.name.length <= AFF_NAME_MAX
+    && (p.g === '' || isG(p.g)) && (p.key == null || typeof p.key === 'string');
+  const profsOk = (v) => !!v && Array.isArray(v.list) && v.list.length <= PROF_MAX && v.list.every(profOk)
+    && (v.active === null || v.list.some((p) => p.id === v.active));
+  (function affRestore() {
+    const a = lsGet(AFF_KEY);
+    if (a && affListOk(a.list)) aff.list = a.list;
+    else aff.list = AFF_DEFAULT.map((id) => ({ id }));
+    if (a && a.pause >= AFF_PAUSE_MIN && a.pause <= AFF_PAUSE_MAX) aff.pause = Math.round(a.pause);
+    if (a && typeof a.twice === 'boolean') aff.twice = a.twice;
+    if (a && a.rot >= 0) aff.rot = a.rot | 0;
+    const p = lsGet(PROF_KEY);
+    if (p && profsOk(p)) { profs.list = p.list; profs.active = p.active; }
+  })();
+  const affSave = () => lsSet(AFF_KEY, { list: aff.list, pause: aff.pause, twice: aff.twice, rot: aff.rot });
+  const profSave = () => lsSet(PROF_KEY, { list: profs.list, active: profs.active });
+  const profActive = () => profs.list.find((p) => p.id === profs.active) || null;
+  const affG = () => { const p = profActive(); return p && isG(p.g) ? p.g : 'm'; }; // unset: masculine (the card asks to choose)
+  const affItem = (id) => (aff.lib ? aff.lib.items.find((x) => x.id === id) : null);
+  const affTheme = (it) => it.id.replace(/_\d+$/, '');
+  const affEntryLang = (e, l) => (e.c != null ? e.lang === l : !!affItem(e.id)); // library lines exist in both languages
+  const affEntries = (l) => aff.list.filter((e) => affEntryLang(e, l));
+  const affEntryText = (e, l, g) => (e.c != null ? e.c : ((affItem(e.id) || {})[l] || {})[g] || '');
+  // names.json match: a typed name equal to a pre-recorded one links its nameKey (case/space-insensitive)
+  const normName = (s) => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  function nameKeyFor(name) {
+    const n = normName(name);
+    if (!n || !aff.names) return null;
+    for (const k in aff.names) { const r = aff.names[k]; if (normName(r.he) === n || normName(r.ru) === n) return k; }
+    return null;
+  }
+  // the name as spoken in language l: the pre-recorded profile's own spelling, else what the user typed
+  const profNameIn = (p, l) => (p.key && aff.names && aff.names[p.key] && aff.names[p.key][l]) || p.name.trim();
+  const estSec = (text) => Math.max(1.5, 0.6 + String(text).length * 0.075); // TTS clips at atempo .92 ≈ 13 chars/s
+
+  async function loadAff() {
+    if (location.protocol === 'file:') return;
+    try {
+      const r = await fetch('affirmations.json');
+      if (!r.ok) return;
+      const j = await r.json();
+      if (!j || !Array.isArray(j.items) || !Array.isArray(j.open) || !Array.isArray(j.close) || !j.open.length || !j.close.length) return;
+      aff.lib = j;
+    } catch (e) { return; }
+    // private pre-recorded names: same-origin only (inside the APK). Never fetched from the site.
+    try {
+      const r = await fetch('voice-private/names.json', { cache: 'no-store' });
+      const ct = r.headers.get('content-type') || '';
+      if (r.ok && !/text\/html/i.test(ct)) {
+        const n = await r.json(), ok = {};
+        if (n && typeof n === 'object') for (const k in n) {
+          const v = n[k];
+          if (/^[a-z0-9_-]+$/i.test(k) && v && typeof v.he === 'string' && typeof v.ru === 'string' && isG(v.g)) ok[k] = v;
+        }
+        if (Object.keys(ok).length) aff.names = ok;
+      }
+    } catch (e) { /* no private names (the public site) */ }
+    if (aff.names) profs.list.forEach((p) => { if (p.key && !aff.names[p.key]) p.key = nameKeyFor(p.name); });
+    else profs.list.forEach((p) => { if (p.key) p.key = null; }); // keys only mean something where names.json exists
+    // the two sessions (one per meditation language); segments are rebuilt by affPrepare() at every start
+    LANGS.forEach((l) => {
+      const sObj = { id: AFF_SIDS[l], lang: l, aff: true, name: l === 'ru' ? 'Аффирмации' : 'אפירמציות', dur: '', segments: [] };
+      // availability probe: the plain first open line in the current gender
+      Object.defineProperty(sObj, 'probe', { get: () => ({ file: `aff/${l}-${affG()}/${aff.lib.open[0].id}.mp3` }) });
+      SESSIONS.push(sObj);
+    });
+  }
+  // one open/close line as a segment with its fallback chain (see loadSeg)
+  function affLine(line, l, g, pauseAfterSec) {
+    const dir = `aff/${l}-${g}/`, plainText = (line[l] || {})[g] || '';
+    const plain = { text: plainText, file: dir + line.id + '.mp3', pauseAfterSec, est: estSec(plainText) };
+    const p = profActive(), nameTpl = ((line[l + '_name'] || {})[g]) || '';
+    if (!p || !p.name.trim() || !nameTpl) return plain;
+    const named = nameTpl.split('{name}').join(profNameIn(p, l));
+    const tts = { text: named, tts: true, needTts: true, lang: l, alt: plain };
+    if (!p.key) return Object.assign({ pauseAfterSec, est: estSec(named) }, tts);
+    return { text: named, file: `${dir}${line.id}-${p.key}.mp3`, priv: true, alt: tts, pauseAfterSec, est: estSec(named) };
+  }
+  function affBuild(l) {
+    const g = affG(), lib = aff.lib, P = aff.pause, segs = [];
+    const items = affEntries(l);
+    if (!items.length) return segs;
+    segs.push(affLine(lib.open[aff.rot % lib.open.length], l, g, AFF_OPEN_PAUSE));
+    items.forEach((e) => {
+      const text = affEntryText(e, l, g);
+      if (!text) return;
+      const one = (pause) => (e.c != null ? { text, tts: true, lang: l, pauseAfterSec: pause, est: estSec(text) }
+        : { text, file: `aff/${l}-${g}/${e.id}.mp3`, pauseAfterSec: pause, est: estSec(text) });
+      if (aff.twice) segs.push(one(AFF_REPEAT_GAP));
+      segs.push(one(P));
+    });
+    segs.push(affLine(lib.close[aff.rot % lib.close.length], l, g, 0));
+    return segs;
+  }
+  // at start (inside the tap): build the segments; a voice without affirmation clips hands over to one that has them
+  function affPrepare(s) {
+    if (!aff.lib) return false;
+    s.segments = affBuild(s.lang);
+    if (s.segments.length < 3) return false;
+    if (!has(voice.id, s.id)) { const v = VOICES.find((x) => has(x.id, s.id)); if (!v) return false; setVoice(v.id, false); }
+    aff.rot++; affSave(); // the next session opens/closes with the next line
+    return true;
+  }
+  // gender changes which clips exist (he-f vs he-m): re-probe the affirmation sessions only
+  function affRecheck() {
+    if (!aff.lib || location.protocol === 'file:') return;
+    const jobs = [];
+    VOICES.forEach((v) => LANGS.forEach((l) => {
+      const s = SESSIONS.find((x) => x.id === AFF_SIDS[l]);
+      if (s) jobs.push(availability(v.id, s.probe).then((ok) => { voice.avail[v.id + '/' + s.id] = ok; }));
+    }));
+    Promise.all(jobs).then(() => render());
+  }
+
+  // ---------- phone voice (TTS) for custom lines + spoken names (v0.13) ----------
+  // APK: native TextToSpeech through the JS bridge — Android.ttsAvailable(lang), Android.speak(text, lang) -> utterance id
+  // ('' = refused), Android.stopSpeak(); the wrapper calls window.__shaketTtsDone(id, ok) when an utterance ends.
+  // Web: speechSynthesis with a voice of the matching language. Neither -> the line is shown as a caption only and the
+  // player keeps its timing. TTS plays outside Web Audio, so the player ducks the music bus while it speaks.
+  const tts = { cur: null, seq: 0 };
+  const hasNativeTts = () => ANDROID && typeof window.Android.speak === 'function';
+  function webTtsVoice(l) {
+    try {
+      if (!('speechSynthesis' in window)) return null;
+      const vs = speechSynthesis.getVoices() || [], re = l === 'ru' ? /^ru/i : /^(he|iw)/i;
+      return vs.find((v) => re.test(v.lang || '')) || null;
+    } catch (e) { return null; }
+  }
+  function ttsAvailable(l) {
+    if (hasNativeTts()) { try { if (window.Android.ttsAvailable(l)) return true; } catch (e) { /* bridge error */ } }
+    return !!webTtsVoice(l);
+  }
+  // resolves 'done' | 'none' (no voice / failed: caption only) | 'stopped' (cancelled by pause/stop)
+  function ttsSpeak(text, l) {
+    ttsCancel();
+    return new Promise((res) => {
+      const id = 'u' + (++tts.seq);
+      const fin = (r) => { if (!tts.cur || tts.cur.id !== id) return; clearTimeout(tts.cur.to); tts.cur = null; res(r); };
+      tts.cur = { id, fin, nid: null, u: null };
+      tts.cur.to = setTimeout(() => { ttsStopEngines(); fin('done'); }, 6000 + text.length * 250); // a lost callback never stalls
+      if (hasNativeTts()) {
+        let nid = '';
+        try { if (window.Android.ttsAvailable(l)) nid = String(window.Android.speak(text, l) || ''); } catch (e) { nid = ''; }
+        if (nid) { tts.cur.nid = nid; return; }
+      }
+      const v = webTtsVoice(l);
+      if (v) {
+        try {
+          const u = new SpeechSynthesisUtterance(text);
+          u.voice = v; u.lang = v.lang; u.rate = 0.85;
+          u.onend = () => fin('done');
+          u.onerror = (e) => fin(e && (e.error === 'interrupted' || e.error === 'canceled') ? 'stopped' : 'none');
+          tts.cur.u = u;
+          speechSynthesis.speak(u);
+          return;
+        } catch (e) { /* fall through: caption only */ }
+      }
+      fin('none');
+    });
+  }
+  window.__shaketTtsDone = (nid, ok) => { const c = tts.cur; if (c && c.nid != null && c.nid === String(nid)) c.fin(ok === false ? 'none' : 'done'); };
+  function ttsStopEngines() {
+    const c = tts.cur;
+    try { if (c && c.nid && hasNativeTts()) window.Android.stopSpeak(); } catch (e) { /* noop */ }
+    try { if (c && c.u) speechSynthesis.cancel(); } catch (e) { /* noop */ }
+  }
+  function ttsCancel() { const c = tts.cur; if (!c) return; ttsStopEngines(); c.fin('stopped'); }
+  // one TTS segment inside runVoice: speak; no voice -> keep the caption up for the line's estimated length (audio
+  // clock, so pausing freezes it too); interrupted by pause -> wait for the sound to come back and say it again
+  async function speakSeg(seg, live) {
+    for (let k = 0; k < 4; k++) {
+      const t0 = ctx.currentTime;
+      const r = await ttsSpeak(seg.text, seg.lang);
+      if (!live()) return;
+      if (r === 'done') return;
+      if (r === 'none') { await waitUntil(t0 + (seg.est || 3), live); return; }
+      await new Promise((res) => { const f = () => (!live() || (state.playing && ctx.state === 'running') ? res() : setTimeout(f, 250)); f(); });
+      if (!live()) return;
+      await waitUntil(ctx.currentTime + 0.8, live); // a breath after the sound fades back in
+      if (!live()) return;
+    }
+  }
+  try { if ('speechSynthesis' in window) speechSynthesis.getVoices(); } catch (e) { /* noop */ } // web: start loading voices
+  try { if (hasNativeTts()) window.Android.ttsAvailable(medLang); } catch (e) { /* noop */ } // APK: warm the engine up
+
   // ---------- session progress (v0.11) ----------
   // The playing session's tile fills in its reading direction (Hebrew RTL from the right, Russian LTR from the left)
   // and shows "elapsed / total". Elapsed runs on the audio clock (ctx.currentTime) minus any loading slip, so pausing
@@ -1513,6 +1791,7 @@
   }
   const pauseSum = (s) => s.segments.slice(0, -1).reduce((a, g) => a + (g.pauseAfterSec || 0), 0);
   function estClips(s) { // nominal minutes ("5 דק׳" / "5 мин") spread over the segments; 8 s/segment without one
+    if (s.segments.every((g) => g.est > 0)) return s.segments.map((g) => g.est); // v0.13: per-line estimates (affirmations)
     const n = s.segments.length, m = parseFloat(String(s.dur || '').replace(',', '.'));
     const speech = (m > 0 ? m * 60 : n * 8 + pauseSum(s)) - DUCK_IN - DUCK_OUT - pauseSum(s);
     return s.segments.map(() => Math.max(2, speech / n));
@@ -1602,7 +1881,7 @@
     if (location.protocol === 'file:') { voice.checked = true; renderVoice(); return; } // fetch can't see local files
     const jobs = [];
     VOICES.forEach((v) => SESSIONS.forEach((s) => jobs.push(
-      availability(v.id, s.segments[0]).then((ok) => { voice.avail[v.id + '/' + s.id] = ok; }))));
+      availability(v.id, s.probe || s.segments[0]).then((ok) => { voice.avail[v.id + '/' + s.id] = ok; }))));
     Promise.all(jobs).then(() => {
       voice.checked = true;
       // remembered/default voice has no audio yet (in this language) but another does -> show that one (not remembered)
@@ -1616,7 +1895,8 @@
   let msArtist = null;
   function initMediaSession() {
     if (!('mediaSession' in navigator)) return;
-    const h = { play: () => { if (!state.playing) play(); }, pause: () => { if (state.playing) pause(); }, stop: () => { if (state.playing) pause(); } };
+    const h = { play: () => { if (!state.playing) rcDo('playing', true); }, pause: () => { if (state.playing) rcDo('playing', false); },
+      stop: () => { if (state.playing) rcDo('playing', false); } };
     for (const k in h) { try { navigator.mediaSession.setActionHandler(k, h[k]); } catch (e) { /* unsupported action */ } }
   }
   function updateMediaSession() {
@@ -1631,13 +1911,13 @@
         msArtist = lang + artist;
       } catch (e) { /* noop */ }
     }
-    try { ms.playbackState = state.playing ? 'playing' : (started ? 'paused' : 'none'); } catch (e) { /* noop */ }
+    try { ms.playbackState = state.playing && !rcMirror() ? 'playing' : (started ? 'paused' : 'none'); } catch (e) { /* noop */ }
   }
 
   // ---------- UI ----------
   const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
   const setFill = (r) => r.style.setProperty('--p', (r.value * 100) + '%');
-  const ui = { presets: {}, modes: {}, timers: {}, layers: {}, sessions: {}, prog: {}, voices: {}, voiceNames: {}, voiceHints: {}, sleepDurs: {} };
+  const ui = { presets: {}, modes: {}, timers: {}, layers: {}, sessions: {}, durs: {}, prog: {}, voices: {}, voiceNames: {}, voiceHints: {}, sleepDurs: {} };
 
   // ---------- scroll-safe touch (v0.9) ----------
   // Feedback from a real phone: scrolling the page kept changing the sound. Two guards:
@@ -1710,28 +1990,54 @@
     return w;
   }
 
+  // v0.12: what each control does. The UI calls them through rcDo(key, value); a remote command calls the very same
+  // functions (rcSet below), so fades, ducking, timers and sleep behave identically for local and remote changes.
+  function uiMode(id) {
+    setMode(id); state.preset = null;
+    if (!state.layers.binaural.on) { state.layers.binaural.on = true; applyLayer('binaural'); }
+    render();
+  }
+  function uiTimer(min) {
+    state.timerMin = min; state.remainMs = 0;
+    state.endAt = min && state.playing ? Date.now() + min * 60000 : 0;
+    render();
+  }
+  function uiLayerOn(id, on) {
+    const s = state.layers[id]; s.on = !!on;
+    if (s.on && s.vol < 0.05) s.vol = 0.4;
+    state.preset = null; applyLayer(id); render();
+  }
+  function uiLayerVol(id, v) {
+    const s = state.layers[id]; s.vol = v; s.on = s.vol > 0.001;
+    state.preset = null; applyLayer(id); render();
+  }
+  function uiMaster(v) {
+    state.master = v;
+    if (ctx) { masterGain.gain.setTargetAtTime(curve(state.master), ctx.currentTime, 0.15); setVoiceOut(0.15); }
+    render();
+  }
+  function uiVoiceVol(v) {
+    state.voiceVol = v;
+    if (ctx) setVoiceOut(0.1);
+    try { localStorage.setItem(VOICE_VOL_KEY, String(state.voiceVol)); } catch (e) { /* private mode: not remembered */ }
+    render();
+  }
+  const vvText = () => { const vv = $('#voiceVol'); vv.setAttribute('aria-valuetext', Math.round(+vv.value * 100) + '%'); };
+
   function buildUI() {
     PRESETS.forEach((p) => {
       const b = el('button', 'chip'); b.type = 'button';
-      b.addEventListener('click', () => applyPreset(p));
+      b.addEventListener('click', () => rcDo('preset', p.id));
       $('#presets').append(b); ui.presets[p.id] = b;
     });
     MODES.forEach((m) => {
       const b = el('button', 'chip'); b.type = 'button';
-      b.addEventListener('click', () => {
-        setMode(m.id); state.preset = null;
-        if (!state.layers.binaural.on) { state.layers.binaural.on = true; applyLayer('binaural'); }
-        render();
-      });
+      b.addEventListener('click', () => rcDo('mode', m.id));
       $('#modes').append(b); ui.modes[m.id] = b;
     });
     TIMERS.forEach((min) => {
       const b = el('button', 'chip'); b.type = 'button';
-      b.addEventListener('click', () => {
-        state.timerMin = min; state.remainMs = 0;
-        state.endAt = min && state.playing ? Date.now() + min * 60000 : 0;
-        render();
-      });
+      b.addEventListener('click', () => rcDo('timerMin', min));
       $('#timers').append(b); ui.timers[min] = b;
     });
     LAYERS.forEach((l) => {
@@ -1741,15 +2047,8 @@
       const r = el('input');
       Object.assign(r, { type: 'range', min: 0, max: 1, step: 0.01 });
       const rw = scrollSafeRange(r, 'layer-range');
-      tog.addEventListener('click', () => {
-        const s = state.layers[l.id]; s.on = !s.on;
-        if (s.on && s.vol < 0.05) s.vol = 0.4;
-        state.preset = null; applyLayer(l.id); render();
-      });
-      r.addEventListener('input', () => {
-        const s = state.layers[l.id]; s.vol = +r.value; s.on = s.vol > 0.001;
-        state.preset = null; setFill(r); applyLayer(l.id); render();
-      });
+      tog.addEventListener('click', () => rcDo(`L.${l.id}.on`, !state.layers[l.id].on));
+      r.addEventListener('input', () => { setFill(r); rcDo(`L.${l.id}.vol`, +r.value); });
       row.append(tog, name, rw); $('#layers').append(row);
       ui.layers[l.id] = { row, tog, r, name };
     });
@@ -1758,32 +2057,33 @@
       b.disabled = true;
       const nm = el('span'), hint = el('small', 'dl-hint'); hint.hidden = true;
       b.append(nm, hint);
-      b.addEventListener('click', () => setVoice(v.id, true));
+      b.addEventListener('click', () => rcDo('voiceId', v.id));
       $('#voicePicker').append(b); ui.voices[v.id] = b; ui.voiceNames[v.id] = nm; ui.voiceHints[v.id] = hint;
     });
-    document.querySelectorAll('#medLang [data-medlang]').forEach((b) => b.addEventListener('click', () => setMedLang(b.dataset.medlang)));
+    document.querySelectorAll('#medLang [data-medlang]').forEach((b) => b.addEventListener('click', () => rcDo('medLang', b.dataset.medlang)));
     SESSIONS.forEach((s) => {
       const b = el('button', 'chip session'); b.type = 'button';
       b.lang = sessionLang(s); // session names come from the session itself
       if (b.lang === 'ru') b.dir = 'ltr';
       const nm = el('span'), du = el('small', 'pdur'), pf = el('i', 'prog'), pt = el('small', 'ptime');
       nm.textContent = s.name; du.textContent = s.dur || '';
+      if (s.aff) ui.durs[s.id] = du;
       pf.setAttribute('aria-hidden', 'true'); // pt inherits the tile direction: elapsed reads first
       b.append(pf, nm, du, pt);
       ui.prog[s.id] = { b, f: pf, t: pt, gen: 0 };
       b.disabled = true;
-      b.addEventListener('click', () => (voice.session === s.id ? stopVoice() : startVoice(s)));
+      b.addEventListener('click', () => rcDo('session', voice.session === s.id ? null : s.id));
       $('#sessions').append(b); ui.sessions[s.id] = b;
     });
 
     SLEEP_DURS.forEach((min) => {
       const b = el('button', 'chip'); b.type = 'button';
-      b.addEventListener('click', () => { sleep.min = min; render(); });
+      b.addEventListener('click', () => rcDo('sleepMin', min));
       $('#sleepDurs').append(b); ui.sleepDurs[min] = b;
     });
-    $('#sleepToggle').addEventListener('click', () => (sleep.on ? exitSleep(false) : startSleep()));
-    $('#sleepVoice').addEventListener('click', () => { sleep.voice = !sleep.voice; render(); });
-    $('#sleepExit').addEventListener('click', (e) => { e.stopPropagation(); exitSleep(false); });
+    $('#sleepToggle').addEventListener('click', () => rcDo('sleepOn', !sleep.on));
+    $('#sleepVoice').addEventListener('click', () => rcDo('sleepVoice', !sleep.voice));
+    $('#sleepExit').addEventListener('click', (e) => { e.stopPropagation(); rcDo('sleepOn', false); });
     let revealTO = 0;
     $('#sleepScreen').addEventListener('click', () => { // any tap reveals controls, never stops anything
       const scr = $('#sleepScreen'); scr.classList.add('reveal');
@@ -1793,34 +2093,306 @@
     const master = $('#master');
     scrollSafeRange(master);
     setFill(master);
-    master.addEventListener('input', () => {
-      state.master = +master.value; setFill(master);
-      if (ctx) { masterGain.gain.setTargetAtTime(curve(state.master), ctx.currentTime, 0.15); setVoiceOut(0.15); }
-    });
+    master.addEventListener('input', () => { setFill(master); rcDo('master', +master.value); });
     // guided-voice volume (v0.10): same scroll-safe slider; live, smooth (0.1 s) changes while a session plays
     const vv = $('#voiceVol');
-    const vvText = () => vv.setAttribute('aria-valuetext', Math.round(+vv.value * 100) + '%');
     vv.value = state.voiceVol;
     scrollSafeRange(vv);
     setFill(vv); vvText();
-    vv.addEventListener('input', () => {
-      state.voiceVol = +vv.value; setFill(vv); vvText();
-      if (ctx) setVoiceOut(0.1);
-      try { localStorage.setItem(VOICE_VOL_KEY, String(state.voiceVol)); } catch (e) { /* private mode: not remembered */ }
-    });
-    $('#play').addEventListener('click', () => (state.playing ? pause() : play()));
+    vv.addEventListener('input', () => { setFill(vv); vvText(); rcDo('voiceVol', +vv.value); });
+    $('#play').addEventListener('click', () => rcDo('playing', !state.playing));
     document.addEventListener('keydown', (e) => {
-      if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); state.playing ? pause() : play(); }
+      if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); rcDo('playing', !state.playing); }
     });
     if (ANDROID) window.addEventListener('online', checkVoice); // remote voices become available again
     relabel();
     setInterval(tickTimer, 1000);
     initMediaSession();
     checkVoice();
+    buildAffUI();
+    rcInit();
   }
 
+  // ---------- personal settings + "my affirmations" editor (v0.13) ----------
+  // Every change goes through rcDo with a local-only key (RC_LOCAL: never sent to a paired phone, never in rcSnap):
+  // 'profiles' {list, active} · 'affList' [entries] · 'affPause' 4..15 · 'affTwice' bool.
+  const uiAff = { sig: '', profSig: '', drag: null, nameTO: 0, delArm: null, delTO: 0, focusKey: null, libOpen: false };
+  const entryKey = (e) => (e.c != null ? 'c:' + e.cid : 'i:' + e.id);
+  const cloneProfs = () => ({ list: profs.list.map((p) => Object.assign({}, p)), active: profs.active });
+  // the active profile to edit; one is created on the first name/gender input when none exists yet
+  function profEdit(fn) {
+    const v = cloneProfs();
+    let p = v.list.find((x) => x.id === v.active);
+    if (!p) {
+      if (v.list.length >= PROF_MAX) return;
+      p = { id: newId('p'), name: '', g: '', key: null }; v.list.push(p); v.active = p.id;
+    }
+    fn(p);
+    p.key = nameKeyFor(p.name);
+    rcDo('profiles', v);
+  }
+  function profSet(v) {
+    const g0 = affG();
+    profs.list = v.list.map((p) => ({ id: p.id, name: p.name, g: p.g, key: p.key && aff.names && aff.names[p.key] ? p.key : null }));
+    profs.active = v.active;
+    profSave();
+    if (affG() !== g0) affRecheck(); // other gender = other clip folder
+    render();
+  }
+  function affSetList(v) { aff.list = v.map((e) => Object.assign({}, e)); affSave(); render(); }
+  function affVisIdx() { const r = []; aff.list.forEach((e, i) => { if (affEntryLang(e, medLang)) r.push(i); }); return r; }
+  // move the from-th shown entry to the to-th shown position (entries of the other language keep their places)
+  function affMove(from, to) {
+    const vis = affVisIdx();
+    if (from === to || from < 0 || to < 0 || from >= vis.length || to >= vis.length) return;
+    const full = aff.list.slice(), item = full[vis[from]], anchor = full[vis[to]];
+    full.splice(vis[from], 1);
+    const at = full.indexOf(anchor);
+    full.splice(to < from ? at : at + 1, 0, item);
+    rcDo('affList', full);
+  }
+  const affPauseFill = (r) => r.style.setProperty('--p', ((+r.value - AFF_PAUSE_MIN) / (AFF_PAUSE_MAX - AFF_PAUSE_MIN) * 100) + '%');
+
+  function buildAffUI() {
+    if (!aff.lib) return;
+    $('#profCard').hidden = false; $('#affCard').hidden = false;
+    const nameIn = $('#profName');
+    nameIn.placeholder = t('profNamePh');
+    const commitName = () => {
+      clearTimeout(uiAff.nameTO); uiAff.nameTO = 0;
+      const v = nameIn.value.slice(0, AFF_NAME_MAX), p = profActive();
+      if ((p ? p.name : '') === v) return;
+      profEdit((x) => { x.name = v; });
+    };
+    nameIn.addEventListener('input', () => { clearTimeout(uiAff.nameTO); uiAff.nameTO = setTimeout(commitName, 500); });
+    nameIn.addEventListener('change', commitName);
+    nameIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commitName(); nameIn.blur(); } });
+    document.querySelectorAll('#profG [data-g]').forEach((b) => b.addEventListener('click', () => {
+      commitName(); profEdit((x) => { x.g = b.dataset.g; });
+    }));
+    $('#profAdd').addEventListener('click', () => {
+      commitName();
+      const v = cloneProfs();
+      if (v.list.length >= PROF_MAX) return;
+      const p = { id: newId('p'), name: '', g: '', key: null };
+      v.list.push(p); v.active = p.id;
+      rcDo('profiles', v);
+      nameIn.value = ''; nameIn.focus();
+    });
+    if (aff.names) {
+      $('#profPicks').hidden = false;
+      Object.keys(aff.names).forEach((k) => {
+        const b = el('button', 'chip'); b.type = 'button'; b.dataset.key = k;
+        b.textContent = aff.names[k].he;
+        b.addEventListener('click', () => {
+          commitName();
+          const v = cloneProfs(), r = aff.names[k];
+          let p = v.list.find((x) => x.key === k);
+          if (!p) { if (v.list.length >= PROF_MAX) return; p = { id: newId('p'), name: r.he, g: r.g, key: k }; v.list.push(p); }
+          v.active = p.id;
+          rcDo('profiles', v);
+        });
+        $('#profPickChips').append(b);
+      });
+    }
+    $('#affGGo').addEventListener('click', () => { $('#profCard').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+    $('#affLibBtn').addEventListener('click', () => { uiAff.libOpen = !uiAff.libOpen; uiAff.sig = ''; renderAff(); });
+    $('#affOwnBtn').addEventListener('click', () => {
+      const f = $('#affOwn'), open = f.hidden;
+      f.hidden = !open; $('#affOwnBtn').setAttribute('aria-expanded', String(open));
+      if (open) $('#affOwnIn').focus();
+    });
+    $('#affOwn').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const inp = $('#affOwnIn'), text = inp.value.trim().replace(/\s+/g, ' ').slice(0, AFF_TEXT_MAX);
+      if (!text || aff.list.length >= AFF_LIST_MAX) return;
+      rcDo('affList', aff.list.concat([{ c: text, lang: medLang, cid: newId('c') }]));
+      inp.value = '';
+    });
+    const pr = $('#affPause');
+    pr.value = aff.pause;
+    scrollSafeRange(pr);
+    affPauseFill(pr);
+    pr.addEventListener('input', () => { affPauseFill(pr); rcDo('affPause', Math.round(+pr.value)); });
+    $('#affTwice').addEventListener('click', () => rcDo('affTwice', !aff.twice));
+    // web voices arrive asynchronously: refresh the "phone voice" notes once they do
+    try { if ('speechSynthesis' in window) speechSynthesis.addEventListener('voiceschanged', () => { uiAff.sig = ''; renderAff(); }); } catch (e) { /* noop */ }
+    window.__shaketTtsReady = () => { uiAff.sig = ''; renderAff(); };
+  }
+
+  const gWord = (g) => (g === 'f' ? t('gF') : g === 'm' ? t('gM') : '');
+  function renderProf() {
+    const p = profActive(), names = aff.names;
+    const sig = JSON.stringify([profs, uiAff.delArm, !!names]);
+    const hello = $('#profHello'), nm = p && p.name.trim();
+    hello.hidden = !nm; setText(hello, nm ? t('profHello', nm) : '');
+    const nameIn = $('#profName');
+    if (document.activeElement !== nameIn && !uiAff.nameTO) nameIn.value = p ? p.name : '';
+    document.querySelectorAll('#profG [data-g]').forEach((b) => b.setAttribute('aria-pressed', String(!!p && p.g === b.dataset.g)));
+    document.querySelectorAll('#profPickChips [data-key]').forEach((b) => b.setAttribute('aria-pressed', String(!!p && p.key === b.dataset.key)));
+    $('#profAdd').disabled = profs.list.length >= PROF_MAX;
+    $('#profTtsHint').hidden = !profs.list.some((x) => x.name.trim() && !x.key);
+    if (sig === uiAff.profSig) return;
+    uiAff.profSig = sig;
+    const box = $('#profList');
+    box.textContent = '';
+    $('#profListLbl').hidden = !profs.list.length;
+    profs.list.forEach((x) => {
+      const row = el('div', 'prof-row');
+      const pick = el('button', 'chip prof-pick'); pick.type = 'button';
+      pick.setAttribute('aria-pressed', String(x.id === profs.active));
+      const n = el('span'); n.textContent = x.name.trim() || t('profNoName');
+      const sm = el('small'); sm.textContent = gWord(x.g) || t('profNoG');
+      pick.append(n, sm);
+      pick.addEventListener('click', () => { const v = cloneProfs(); v.active = x.id; rcDo('profiles', v); });
+      row.append(pick);
+      if (x.name.trim()) {
+        const tag = el('span', 'tag' + (x.key ? ' warm' : ''));
+        tag.textContent = x.key ? t('tagWarm') : t('tagPhoneName');
+        row.append(tag);
+      }
+      const del = el('button', 'icon-btn del' + (uiAff.delArm === x.id ? ' armed' : '')); del.type = 'button';
+      del.textContent = uiAff.delArm === x.id ? t('delSure') : '✕';
+      del.setAttribute('aria-label', t('profDel', x.name.trim() || t('profNoName')));
+      del.addEventListener('click', () => {
+        clearTimeout(uiAff.delTO);
+        if (uiAff.delArm !== x.id) { // first tap arms, second deletes (no dialogs)
+          uiAff.delArm = x.id; uiAff.delTO = setTimeout(() => { uiAff.delArm = null; render(); }, 3500); render(); return;
+        }
+        uiAff.delArm = null;
+        const v = cloneProfs();
+        v.list = v.list.filter((y) => y.id !== x.id);
+        if (v.active === x.id) v.active = v.list.length ? v.list[0].id : null;
+        rcDo('profiles', v);
+      });
+      row.append(del);
+      box.append(row);
+    });
+  }
+
+  function affRow(e, k, n, l, g) {
+    const li = el('li', 'aff-row' + (e.c != null ? ' custom' : ''));
+    li.dataset.key = entryKey(e);
+    const h = el('span', 'aff-handle'); h.setAttribute('aria-hidden', 'true'); h.title = t('affDrag');
+    h.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18"><g fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></g></svg>';
+    const tx = el('span', 'aff-text'); tx.lang = l; tx.dir = l === 'ru' ? 'ltr' : 'rtl';
+    tx.textContent = affEntryText(e, l, g);
+    const body = el('span', 'aff-body'); body.append(tx);
+    if (e.c != null) { const tag = el('span', 'tag'); tag.textContent = t('tagPhone'); body.append(tag); }
+    const btn = (cls, label, aria, fn, dis) => {
+      const b = el('button', 'icon-btn ' + cls); b.type = 'button'; b.textContent = label; b.setAttribute('aria-label', aria);
+      b.disabled = !!dis; b.dataset.act = cls;
+      b.addEventListener('click', () => { uiAff.focusKey = [li.dataset.key, cls]; fn(); });
+      return b;
+    };
+    const short = tx.textContent.length > 24 ? tx.textContent.slice(0, 24) + '…' : tx.textContent;
+    li.append(h, body,
+      btn('up', '▲', t('affUp', short), () => affMove(k, k - 1), k === 0),
+      btn('down', '▼', t('affDown', short), () => affMove(k, k + 1), k === n - 1),
+      btn('rm', '✕', t('affRm', short), () => { const key = li.dataset.key; uiAff.focusKey = null; rcDo('affList', aff.list.filter((x) => entryKey(x) !== key)); }));
+    affDrag(h, li);
+    return li;
+  }
+  // drag to reorder: only the handle drags (touch-action: none on it), so swiping anywhere else scrolls the page
+  function affDrag(h, li) {
+    h.addEventListener('pointerdown', (e) => {
+      if (e.button > 0 || uiAff.drag) return;
+      e.preventDefault();
+      const rows = [...$('#affList').children], from = rows.indexOf(li);
+      if (from < 0) return;
+      uiAff.drag = { id: e.pointerId, y0: e.clientY, from, to: from, rows, rects: rows.map((r) => r.getBoundingClientRect()), li };
+      try { h.setPointerCapture(e.pointerId); } catch (err) { /* noop */ }
+      li.classList.add('dragging');
+    });
+    h.addEventListener('pointermove', (e) => {
+      const d = uiAff.drag;
+      if (!d || e.pointerId !== d.id) return;
+      const dy = e.clientY - d.y0, R = d.rects, me = R[d.from], mid = me.top + me.height / 2 + dy;
+      li.style.transform = `translateY(${dy}px)`;
+      let to = 0;
+      R.forEach((r, i) => { if (i !== d.from && r.top + r.height / 2 < mid) to++; });
+      d.to = to;
+      const gap = me.height + 8;
+      d.rows.forEach((r, i) => {
+        if (i === d.from) return;
+        const sh = d.from < to && i > d.from && i <= to ? -gap : d.from > to && i >= to && i < d.from ? gap : 0;
+        r.style.transform = sh ? `translateY(${sh}px)` : '';
+      });
+    });
+    const end = (commit) => (e) => {
+      const d = uiAff.drag;
+      if (!d || e.pointerId !== d.id) return;
+      uiAff.drag = null;
+      d.rows.forEach((r) => { r.style.transform = ''; });
+      li.classList.remove('dragging');
+      if (commit && d.to !== d.from) affMove(d.from, d.to);
+    };
+    h.addEventListener('pointerup', end(true));
+    h.addEventListener('pointercancel', end(false));
+  }
+  function renderAffLib(l, g) {
+    const box = $('#affLib');
+    box.textContent = '';
+    const inList = new Set(aff.list.filter((e) => e.id).map((e) => e.id));
+    aff.lib.themes.forEach((th) => {
+      const items = aff.lib.items.filter((it) => affTheme(it) === th.id);
+      if (!items.length) return;
+      const fs = el('fieldset', 'aff-theme'), lg = el('legend');
+      lg.textContent = th.he; fs.append(lg);
+      items.forEach((it) => {
+        const lab = el('label', 'aff-opt'), cb = el('input'); cb.type = 'checkbox'; cb.checked = inList.has(it.id);
+        const sp = el('span'); sp.lang = l; sp.dir = l === 'ru' ? 'ltr' : 'rtl'; sp.textContent = (it[l] || {})[g] || '';
+        cb.addEventListener('change', () => {
+          if (cb.checked) { if (!aff.list.some((e) => e.id === it.id) && aff.list.length < AFF_LIST_MAX) rcDo('affList', aff.list.concat([{ id: it.id }])); }
+          else rcDo('affList', aff.list.filter((e) => e.id !== it.id));
+        });
+        lab.append(cb, sp); fs.append(lab);
+      });
+      box.append(fs);
+    });
+    const done = el('button', 'chip aff-lib-done'); done.type = 'button'; done.textContent = t('affLibDone');
+    done.addEventListener('click', () => { uiAff.libOpen = false; uiAff.sig = ''; renderAff(); $('#affLibBtn').focus(); });
+    box.append(done);
+  }
+  function renderAff() {
+    if (!aff.lib) return;
+    renderProf();
+    const p = profActive(), l = medLang, g = affG(), ttsOk = ttsAvailable(l);
+    $('#affGPrompt').hidden = !!(p && isG(p.g));
+    const pr = $('#affPause');
+    if (document.activeElement !== pr && +pr.value !== aff.pause) { pr.value = aff.pause; affPauseFill(pr); }
+    setText($('#affPauseLbl'), t('affPause', aff.pause));
+    pr.setAttribute('aria-valuetext', t('sec', aff.pause));
+    $('#affTwice').setAttribute('aria-checked', String(aff.twice));
+    const inp = $('#affOwnIn');
+    if (inp.lang !== l) { inp.lang = l; inp.dir = l === 'ru' ? 'ltr' : 'rtl'; inp.placeholder = l === 'ru' ? 'Например: Я спокойна' : t('affOwnPh'); }
+    setText($('#affOwnNote'), ttsOk ? t('affOwnNote') : t('affOwnNoTts'));
+    $('#affOwnBtn').disabled = aff.list.length >= AFF_LIST_MAX;
+    const sig = JSON.stringify([aff.list, l, g, uiAff.libOpen]);
+    if (sig === uiAff.sig || uiAff.drag) return; // unchanged, or a drag is in flight (never rebuild under a finger)
+    uiAff.sig = sig;
+    setText($('#affLangNote'), t('affLangNote', l));
+    const vis = affEntries(l), ol = $('#affList');
+    ol.textContent = '';
+    vis.forEach((e, k) => ol.append(affRow(e, k, vis.length, l, g)));
+    $('#affEmpty').hidden = vis.length > 0;
+    $('#affLibBtn').setAttribute('aria-expanded', String(uiAff.libOpen));
+    $('#affLib').hidden = !uiAff.libOpen;
+    if (uiAff.libOpen) renderAffLib(l, g);
+    if (uiAff.focusKey) { // keyboard users keep their place after ▲/▼
+      const [key, act] = uiAff.focusKey; uiAff.focusKey = null;
+      const row = [...ol.children].find((r) => r.dataset.key === key), b = row && row.querySelector(`[data-act="${act}"]`);
+      if (b) (b.disabled ? row.querySelector('.icon-btn:not(:disabled)') || b : b).focus();
+    }
+  }
+  const ruPlural = (n, one, few, many) => { const a = n % 10, b = n % 100; return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many; };
+  const affDurText = (s) => {
+    const n = affEntries(s.lang).length;
+    return s.lang === 'ru' ? `${n} ${ruPlural(n, 'фраза', 'фразы', 'фраз')}` : n === 1 ? 'משפט אחד' : `${n} משפטים`;
+  };
+
   // ---------- language ----------
-  const voiceName = (v) => (I18N[lang]['voice.' + v.id] || v.name);
+  const voiceName = (v) => (I18N[lang]['voice.' + v.id] || (v.local && v['name_' + lang]) || v.name);
   // labels of everything buildUI created (static markup is handled by applyStatic)
   function relabel() {
     PRESETS.forEach((p) => { ui.presets[p.id].textContent = t('preset.' + p.id); });
@@ -1859,14 +2431,14 @@
     if (sleep.on) {
       const left = Math.max(0, sleep.endAt - Date.now());
       setText(lbl, '🌙 ' + fmt(left)); setText($('#sleepLeft'), fmt(left));
-      if (left <= 0) endSleep();
+      if (left <= 0 && !rcMirror()) endSleep();
       return;
     }
     setText($('#sleepLeft'), '');
     if (state.playing && state.endAt) {
       const left = Math.max(0, state.endAt - Date.now());
       setText(lbl, fmt(left));
-      if (left <= 0) { pause(true); lbl.textContent = ''; }
+      if (left <= 0 && !rcMirror()) { pause(true); lbl.textContent = ''; }
     } else if (!state.playing && state.timerMin && state.remainMs > 0) {
       setText(lbl, fmt(state.remainMs) + ' · ' + t('paused'));
     } else setText(lbl, '');
@@ -1892,6 +2464,10 @@
       const b = ui.sessions[s.id];
       b.style.display = sessionLang(s) === medLang ? '' : 'none'; // only the meditation language's sessions
       b.disabled = !has(voice.id, s.id);
+      if (s.aff) { // v0.13: playable with any voice that has the clips (startVoice hands over); needs ≥ 1 line
+        b.disabled = !VOICES.some((v) => has(v.id, s.id)) || !affEntries(s.lang).length;
+        setText(ui.durs[s.id], affDurText(s));
+      }
       b.setAttribute('aria-pressed', String(voice.session === s.id));
     });
     const cap = $('#voiceCaption'), cs = SESSIONS.find((s) => s.id === voice.session);
@@ -1902,7 +2478,7 @@
   }
 
   function renderSleep() {
-    const scr = $('#sleepScreen'), shown = sleep.on || sleep.done;
+    const scr = $('#sleepScreen'), shown = (sleep.on || sleep.done) && !rcMirror(); // the remote's sleep shows on its card only
     document.body.classList.toggle('sleeping', shown);
     if (scr.hidden === shown) { scr.hidden = !shown; if (!shown) scr.classList.remove('reveal'); }
     scr.classList.toggle('done', sleep.done);
@@ -1930,10 +2506,444 @@
       u.tog.setAttribute('aria-pressed', String(s.on));
       if (document.activeElement !== u.r) { u.r.value = s.vol; setFill(u.r); }
     });
+    const mr = $('#master'), vv = $('#voiceVol'); // v0.12: may change remotely
+    if (document.activeElement !== mr && +mr.value !== state.master) { mr.value = state.master; setFill(mr); }
+    if (document.activeElement !== vv && +vv.value !== state.voiceVol) { vv.value = state.voiceVol; setFill(vv); vvText(); }
     renderVoice();
+    renderAff();
     renderSleep();
     updateMediaSession();
     tickTimer();
+    rcOnRender();
+  }
+
+  // ---------- remote control (v0.12) ----------
+  // Two phones: the PLAYER (mother's phone) makes the sound; the CONTROLLER (son's phone) drives it.
+  // State model = rcSnap(): a flat, serializable map of every key the controller can change (below). Message flow:
+  //   controller UI action -> rcDo(key, value) -> 'cmd' {ops:[[key, value], …]}  (only on a real user action)
+  //   player 'cmd' -> rcSet[key](value) = the same ui*/play/pause/applyPreset/startVoice/… functions the UI runs
+  //   player render() -> state changed (by any cause: local tap, remote cmd, timer end, session end) -> 'state'
+  //   controller 'state' -> mirror into its UI (no audio), or, with "לנגן גם אצלי", apply through rcSet as well.
+  // No echo by construction: the controller never answers a 'state', the player never sends 'cmd'. Each cmd is
+  // answered by exactly one 'state' or 'ack' carrying the cmd's seq, which clears the controller's pending keys
+  // (a pending key is not overwritten by an older state, so a dragged slider never jumps back). Last-writer-wins on
+  // the player: a cmd op older (clock-offset corrected) than the player's own latest tap on that key is rejected.
+  const RCM = window.ShaketRemote || null;
+  const RC_RELAY = null; // network relay NOT approved yet: null = no network transport (later e.g. { kind: 'ntfy', base })
+  // ?rc=local runs two "phones" as two tabs of one browser, which share localStorage: &rcns=<name> keeps them apart
+  const RC_NS = QS.get('rc') === 'local' && /^[a-z0-9]{1,12}$/i.test(QS.get('rcns') || '') ? '.' + QS.get('rcns') : '';
+  const RC_KEY = 'shaket.rc' + RC_NS, RC_DEV_KEY = 'shaket.rc.dev' + RC_NS, RC_CODE_TTL = 5 * 60000, RC_PENDING_MS = 5000;
+  const RC_TX_MS = 150, RC_CMD_MS = 80;
+  const rcTransport = (() => {
+    try {
+      if (!RCM) return null;
+      if (QS.get('rc') === 'local' && typeof BroadcastChannel !== 'undefined') return new RCM.LocalTransport();
+      if (RC_RELAY) return new RCM.RelayTransport(RC_RELAY);
+    } catch (e) { /* no transport */ }
+    return null;
+  })();
+  const rcStore = (() => { try { return JSON.parse(localStorage.getItem(RC_KEY)) || {}; } catch (e) { return {}; } })();
+  const rc = {
+    role: ['off', 'player', 'controller'].includes(rcStore.role) ? rcStore.role : 'off',
+    secret: typeof rcStore.secret === 'string' ? rcStore.secret : null, localPlay: !!rcStore.localPlay,
+    peerSeen: +rcStore.peerSeen || 0,
+    dev: (() => {
+      let d = null; try { d = localStorage.getItem(RC_DEV_KEY); } catch (e) { /* noop */ }
+      if (!d && RCM) { d = RCM.newId(); try { localStorage.setItem(RC_DEV_KEY, d); } catch (e) { /* noop */ } }
+      return d || 'dev' + Math.random().toString(36).slice(2);
+    })(),
+    sRole: rcStore.sRole === 'controller' ? 'controller' : 'player', // which role the stored secret belongs to
+    room: null, offer: null, err: '', busy: false, remote: null,
+    txTO: 0, lastJSON: '', force: false, acks: {}, needAck: false, stamp: {}, // player side
+    ops: new Map(), cmdTO: 0, pending: {}, // controller side
+    unlock: false,
+  };
+  const r2 = (v) => Math.round(v * 100) / 100;
+  const rcSave = () => {
+    try { localStorage.setItem(RC_KEY, JSON.stringify({ role: rc.role, secret: rc.secret, sRole: rc.sRole, localPlay: rc.localPlay, peerSeen: rc.peerSeen })); } catch (e) { /* noop */ }
+  };
+  const rcPaired = () => !!(rc.room && rc.secret);
+  // the controller shows the player's state instead of making sound (default; "לנגן גם אצלי" turns it off)
+  function rcMirror() { return rc.role === 'controller' && !rc.localPlay && rcPaired(); }
+  const rcLayerKey = (k) => /^L\.([a-z]+)\.(on|vol)$/.exec(k);
+  function rcSnap() {
+    const s = { playing: state.playing, preset: state.preset, mode: state.mode, master: r2(state.master), timerMin: state.timerMin,
+      sleepOn: sleep.on, sleepMin: sleep.min, sleepVoice: sleep.voice, medLang, voiceId: voice.id, voiceVol: r2(state.voiceVol),
+      session: voice.session };
+    LAYERS.forEach((l) => { s[`L.${l.id}.on`] = state.layers[l.id].on; s[`L.${l.id}.vol`] = r2(state.layers[l.id].vol); });
+    return s;
+  }
+  // order for applying a whole snapshot: settings first, then what starts things, play/pause last
+  const RC_ORDER = ['medLang', 'voiceId', 'voiceVol', 'master', 'timerMin', 'preset', 'mode',
+    ...LAYERS.flatMap((l) => [`L.${l.id}.on`, `L.${l.id}.vol`]), 'sleepMin', 'sleepVoice', 'sleepOn', 'session', 'playing'];
+  const rcValid = (k, v) => {
+    const L = rcLayerKey(k);
+    if (L) return LAYERS.some((l) => l.id === L[1]) && (L[2] === 'on' ? typeof v === 'boolean' : typeof v === 'number' && v >= 0 && v <= 1);
+    switch (k) {
+      case 'playing': case 'sleepOn': case 'sleepVoice': return typeof v === 'boolean';
+      case 'preset': return v === null || v === SLEEP_MIX.id || PRESETS.some((p) => p.id === v);
+      case 'mode': return MODES.some((m) => m.id === v);
+      case 'master': case 'voiceVol': return typeof v === 'number' && v >= 0 && v <= 1;
+      case 'timerMin': return TIMERS.includes(v);
+      case 'sleepMin': return SLEEP_DURS.includes(v);
+      case 'medLang': return LANGS.includes(v);
+      case 'voiceId': return VOICES.some((x) => x.id === v);
+      case 'session': return v === null || SESSIONS.some((s) => s.id === v);
+      case 'profiles': return profsOk(v);
+      case 'affList': return affListOk(v);
+      case 'affPause': return Number.isInteger(v) && v >= AFF_PAUSE_MIN && v <= AFF_PAUSE_MAX;
+      case 'affTwice': return typeof v === 'boolean';
+      default: return false;
+    }
+  };
+  // the real thing: every key through the functions the UI itself uses
+  // tap = a real user action through rcDo: re-tapping the selected timer / mode chip re-applies it like v0.11 did
+  // (timer restarts, mode clears the preset); snapshot/cmd paths stay idempotent
+  function rcSetKey(k, v, tap) {
+    const L = rcLayerKey(k);
+    if (L) { if (L[2] === 'on') { if (state.layers[L[1]].on !== v) uiLayerOn(L[1], v); } else if (r2(state.layers[L[1]].vol) !== v) uiLayerVol(L[1], v); return; }
+    switch (k) {
+      case 'playing': if (v !== state.playing) { if (v) play(); else pause(); } break;
+      case 'preset': {
+        const p = PRESETS.find((x) => x.id === v);
+        if (p) applyPreset(p); else if (v === null && state.preset !== null) { state.preset = null; render(); }
+        break; // 'sleepmode' comes with sleepOn
+      }
+      case 'mode': if (tap || v !== state.mode || !state.layers.binaural.on) uiMode(v); break;
+      case 'master': uiMaster(v); break;
+      case 'voiceVol': uiVoiceVol(v); break;
+      case 'timerMin': if (tap || v !== state.timerMin) uiTimer(v); break;
+      case 'sleepOn': if (v && !sleep.on) startSleep(); else if (!v && (sleep.on || sleep.done)) exitSleep(false); break;
+      case 'sleepMin': sleep.min = v; render(); break;
+      case 'sleepVoice': sleep.voice = v; render(); break;
+      case 'medLang': setMedLang(v); break;
+      case 'voiceId': setVoice(v, true); break;
+      case 'session':
+        if (v === null) { if (voice.session) stopVoice(); }
+        else if (v !== voice.session) { const s = SESSIONS.find((x) => x.id === v); if (s) startVoice(s); }
+        break;
+      case 'profiles': profSet(v); break;
+      case 'affList': affSetList(v); break;
+      case 'affPause': aff.pause = v; affSave(); render(); break;
+      case 'affTwice': aff.twice = v; affSave(); render(); break;
+      default: break;
+    }
+  }
+  // mirror: the raw value into the shown state, no audio
+  function rcMirrorKey(k, v) {
+    const L = rcLayerKey(k);
+    if (L) { state.layers[L[1]][L[2]] = v; return; }
+    switch (k) {
+      case 'playing': state.playing = v; break;
+      case 'preset': state.preset = v; break;
+      case 'mode': state.mode = v; break;
+      case 'master': state.master = v; break;
+      case 'voiceVol': state.voiceVol = v; break;
+      case 'timerMin': state.timerMin = v; break;
+      case 'sleepOn': sleep.on = v; sleep.done = false; break;
+      case 'sleepMin': sleep.min = v; break;
+      case 'sleepVoice': sleep.voice = v; break;
+      case 'medLang': medLang = v; break;
+      case 'voiceId': voice.id = v; break;
+      case 'session': voice.session = v; voice.caption = ''; break;
+      default: break;
+    }
+  }
+  // optimistic local preview of a command (until the player's state confirms it)
+  function rcPreview(k, v) {
+    rcMirrorKey(k, v);
+    const L = rcLayerKey(k);
+    if (L) {
+      const s = state.layers[L[1]];
+      if (L[2] === 'on' && s.on && s.vol < 0.05) s.vol = 0.4;
+      if (L[2] === 'vol') s.on = v > 0.001;
+      state.preset = null;
+    } else if (k === 'preset') {
+      const p = PRESETS.find((x) => x.id === v);
+      if (p) { LAYERS.forEach((l) => { const pv = p.layers[l.id]; state.layers[l.id] = pv ? { on: true, vol: pv } : { on: false, vol: state.layers[l.id].vol }; }); state.mode = p.mode; state.playing = true; }
+    } else if (k === 'mode') { state.preset = null; state.layers.binaural.on = true; }
+    else if ((k === 'session' && v) || (k === 'sleepOn' && v)) state.playing = true;
+    else if (k === 'playing' && !v) sleep.on = false;
+  }
+
+  // v0.13: personal data of THIS phone (profiles, affirmation list, pause, repeat): through rcDo like every control,
+  // but never sent to / mirrored from a paired phone — a remote 'aff' session plays the player phone's own list
+  const RC_LOCAL = new Set(['profiles', 'affList', 'affPause', 'affTwice']);
+  // the single entry point of every control
+  function rcDo(k, v) {
+    if (!rcValid(k, v)) return;
+    if (RC_LOCAL.has(k)) { rcSetKey(k, v, true); return; }
+    if (rc.role === 'player') rc.stamp[k] = Date.now(); // this phone's own tap: newer than any cmd sent before it
+    if (rc.role === 'controller' && rcPaired()) {
+      if (rcMirror()) { rcPreview(k, v); render(); } else rcSetKey(k, v, true);
+      rc.ops.delete(k); rc.ops.set(k, [v, Date.now()]); // insertion order = the user's order; slider moves coalesce
+      if (!rc.cmdTO) rc.cmdTO = setTimeout(rcFlushCmd, RC_CMD_MS);
+      return;
+    }
+    rcSetKey(k, v, true);
+  }
+  function rcFlushCmd() {
+    rc.cmdTO = 0;
+    if (!rc.ops.size || !rc.room) return;
+    const ops = [...rc.ops.entries()].map(([k, [v, at]]) => [k, v, at]); rc.ops.clear(); // [key, value, tap time]
+    const seq = rc.room.send('cmd', { ops });
+    const now = Date.now();
+    ops.forEach(([k]) => { rc.pending[k] = { seq, at: now }; });
+  }
+  const rcIsPending = (k) => { const p = rc.pending[k]; return !!p && Date.now() - p.at < RC_PENDING_MS; };
+  function rcClearPending(ack) {
+    if (!ack) return;
+    for (const k in rc.pending) if (rc.pending[k].seq <= ack || !rcIsPending(k)) delete rc.pending[k];
+  }
+
+  // player: any state change -> one (throttled) 'state' message
+  function rcOnRender() {
+    if (rc.role !== 'player' || !rc.room || rc.txTO) return;
+    rc.txTO = setTimeout(rcFlushState, RC_TX_MS);
+  }
+  function rcExtras() {
+    const now = Date.now();
+    return { tl: state.playing && state.endAt ? Math.max(0, state.endAt - now) : state.remainMs || 0,
+      sl: sleep.on ? Math.max(0, sleep.endAt - now) : 0, sd: sleep.done };
+  }
+  function rcFlushState() {
+    rc.txTO = 0;
+    if (rc.role !== 'player' || !rc.room) return;
+    const s = rcSnap(), json = JSON.stringify(s);
+    if (json !== rc.lastJSON || rc.force) {
+      rc.lastJSON = json; rc.force = false; rc.needAck = false;
+      rc.room.send('state', { s, x: rcExtras(), ack: rc.acks });
+    } else if (rc.needAck) { rc.needAck = false; rc.room.send('ack', { ack: rc.acks }); }
+  }
+
+  function rcOnMessage(m, peer) {
+    if (m.type === 'hello') {
+      if (m.bye) { rc.room.lastSeen = 0; rcRender(); return; }
+      if (rc.role === 'player' && m.role === 'controller') {
+        rc.peerSeen = Date.now(); rcSave();
+        if (rc.offer && !m.hb) rcEndOffer(); // the code did its job: single use
+        if (m.want) { rc.force = true; rcOnRender(); }
+      } else if (rc.role === 'controller' && m.role === 'player') {
+        rc.peerSeen = Date.now(); rcSave();
+        if (!m.hb && !rc.remote) rc.room.send('hello', { role: 'controller', want: 1 });
+      }
+      return;
+    }
+    if (rc.role === 'player' && m.type === 'cmd' && Array.isArray(m.ops)) {
+      const rejected = [];
+      m.ops.forEach((op) => {
+        if (!Array.isArray(op) || !rcValid(op[0], op[1])) return;
+        const at = (typeof op[2] === 'number' ? Math.min(op[2], m.ts) : m.ts) + (peer.skew || 0); // their tap, on our clock
+        if ((rc.stamp[op[0]] || 0) > at) { rejected.push(op[0]); return; } // a newer local tap wins
+        rcSetKey(op[0], op[1]);
+      });
+      rc.acks[m.from] = m.seq; rc.needAck = true;
+      if (rejected.length) rc.force = true; // the controller must see what really stayed
+      rcOnRender();
+      return;
+    }
+    if (rc.role === 'controller' && (m.type === 'state' || m.type === 'ack')) {
+      rcClearPending(m.ack && m.ack[rc.dev]);
+      if (m.type === 'state' && m.s && typeof m.s === 'object') {
+        rc.remote = { s: m.s, x: m.x || {}, at: Date.now() };
+        rcApplyRemote();
+      } else if (rc.remote) rcApplyRemote(); // a rejected op: re-show the player's value
+    }
+  }
+  // controller: show (mirror) or also play (local) the player's latest state; pending own edits stay on top
+  function rcApplyRemote() {
+    const R = rc.remote;
+    if (!R || rc.role !== 'controller') return;
+    const keys = RC_ORDER.filter((k) => k in R.s && !rcIsPending(k) && rcValid(k, R.s[k]));
+    if (rcMirror()) {
+      keys.forEach((k) => rcMirrorKey(k, R.s[k]));
+      const age = Date.now() - R.at, x = R.x;
+      state.endAt = state.playing && x.tl ? Date.now() + Math.max(0, x.tl - age) : 0;
+      state.remainMs = !state.playing ? x.tl || 0 : 0;
+      sleep.endAt = sleep.on ? Date.now() + Math.max(0, (x.sl || 0) - age) : 0;
+      sleep.done = !!x.sd && !sleep.on;
+      render();
+    } else keys.forEach((k) => { if (rcSnap()[k] !== R.s[k]) rcSetKey(k, R.s[k]); }); // re-snapshot: a preset moves layers
+  }
+  // controller without local sound: silence this phone's own audio (once), then show the player
+  function rcGoMirror() {
+    if (voice.session) stopVoice();
+    if (sleep.on) exitSleep(false);
+    if (state.playing) pause();
+    rcApplyRemote();
+  }
+  // leaving mirror mode: the shown "playing" was the other phone's — this one is silent
+  function rcLeaveMirror() {
+    state.playing = false; voice.session = null; voice.caption = ''; sleep.on = false; sleep.done = false; state.endAt = 0;
+    render();
+  }
+
+  // ---------- rooms + pairing ----------
+  async function rcOpen() {
+    rcClose(false);
+    if (!rcTransport || !rc.secret || rc.role === 'off') return;
+    const room = new RCM.Room({ transport: rcTransport, secret: rc.secret, deviceId: rc.dev, onMessage: rcOnMessage, onChange: rcRender });
+    rc.room = room;
+    try { await room.start({ role: rc.role }); } catch (e) { rc.err = t('rcNoCrypto'); rc.room = null; rcRender(); return; }
+    if (rc.room !== room) { room.stop(); return; }
+    if (rc.role === 'player') { room.send('hello', { role: 'player' }); rc.force = true; rcOnRender(); }
+    else { room.send('hello', { role: 'controller', want: 1 }); if (rcMirror()) rcGoMirror(); }
+    rcRender();
+  }
+  function rcClose(bye) {
+    if (rc.cmdTO) { clearTimeout(rc.cmdTO); rc.cmdTO = 0; } rc.ops.clear();
+    if (!rc.room) return;
+    const room = rc.room, wasMirror = rcMirror();
+    rc.room = null;
+    if (bye) room.send('hello', { role: rc.role, bye: 1 });
+    setTimeout(() => room.stop(), bye ? 300 : 0); // let the bye leave first
+    rc.remote = null; rc.pending = {}; rc.lastJSON = '';
+    if (wasMirror) rcLeaveMirror();
+  }
+  async function rcNewOffer() {
+    if (!rcTransport || !rc.secret || rc.role !== 'player') return;
+    rcEndOffer();
+    try { rc.offer = await RCM.offer(rcTransport, rc.secret, RC_CODE_TTL); rc.err = ''; }
+    catch (e) { rc.offer = null; rc.err = window.crypto && crypto.subtle ? String(e.message || e) : t('rcNoCrypto'); }
+    rcRender();
+  }
+  function rcEndOffer() {
+    if (!rc.offer) return;
+    const o = rc.offer; rc.offer = null;
+    rcTransport.withdraw(o.id).catch(() => {});
+    rcRender();
+  }
+  async function rcClaim(code) {
+    code = String(code || '').replace(/\D/g, '');
+    if (!RCM.codeOk(code)) { rc.err = t('rcCodeFmt'); rcRender(); return; }
+    rc.busy = true; rc.err = ''; rcRender();
+    let secret = null;
+    try { secret = await RCM.claim(rcTransport, code); } catch (e) { secret = null; }
+    rc.busy = false;
+    if (!secret || rc.role !== 'controller') { rc.err = t('rcBadCode'); rcRender(); return; }
+    rc.secret = secret; rc.sRole = 'controller'; rc.peerSeen = 0; rcSave();
+    $('#rcCodeIn').value = '';
+    await rcOpen();
+  }
+  function rcSetRole(role) {
+    if (!rcTransport || role === rc.role) return;
+    rcEndOffer();
+    rcClose(true);
+    rc.role = role; rc.err = '';
+    // a room secret belongs to one role: player rooms are made here, controller ones only come from pairing
+    if (role !== 'off' && rc.secret && rc.sRole !== role) { rc.secret = null; rc.peerSeen = 0; }
+    if (role === 'player' && !rc.secret) { rc.secret = RCM.newSecret(); rc.sRole = 'player'; }
+    rcSave();
+    rcOpen().then(() => { if (rc.role === 'player' && !rc.peerSeen) rcNewOffer(); });
+    rcRender();
+  }
+  function rcUnpair() {
+    rcEndOffer();
+    rcClose(true);
+    // player: a new room secret revokes every paired controller at once
+    rc.secret = rc.role === 'player' ? RCM.newSecret() : null; rc.peerSeen = 0; rc.err = '';
+    rcSave();
+    rcOpen().then(() => { if (rc.role === 'player') rcNewOffer(); });
+    rcRender();
+  }
+  function rcSetLocalPlay(on) {
+    if (on === rc.localPlay) return;
+    rc.localPlay = on; rcSave();
+    if (rc.role === 'controller' && rcPaired()) {
+      if (on) { rcLeaveMirror(); rcApplyRemote(); } // inside this tap: may start this phone's sound
+      else rcGoMirror();
+    }
+    rcRender();
+  }
+
+  // ---------- remote-control card + banner ----------
+  const rcStatus = () => (rc.room ? rc.room.status() : 'disconnected');
+  function rcSeenText() {
+    const at = (rc.room && rc.room.lastSeen) || rc.peerSeen;
+    if (!at) return t('rcSeenNever');
+    const ago = Date.now() - at;
+    if (ago < 60000) return t('rcSeenNow');
+    if (ago < 3600000) return t('rcSeenAgo', Math.floor(ago / 60000));
+    const d = new Date(at);
+    return t('rcSeenAt', `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+  }
+  function rcRender() {
+    const card = $('#rcCard');
+    if (!card) return;
+    const on = !!rcTransport, st = rcStatus(), paired = rcPaired();
+    $('#rcNote').hidden = on;
+    card.classList.toggle('unready', !on);
+    document.querySelectorAll('#rcRoles [data-role]').forEach((b) => {
+      b.disabled = !on; b.setAttribute('aria-pressed', String(b.dataset.role === rc.role));
+    });
+    const isP = rc.role === 'player', isC = rc.role === 'controller';
+    $('#rcPlayerPane').hidden = !(on && isP);
+    $('#rcCtrlPane').hidden = !(on && isC);
+    if (isP) {
+      const o = rc.offer;
+      $('#rcCodeBox').hidden = !o;
+      if (o) {
+        setText($('#rcCode'), o.code.slice(0, 3) + ' ' + o.code.slice(3));
+        setText($('#rcCodeLeft'), t('rcCodeLeft', fmt(Math.max(0, o.exp - Date.now()))));
+      }
+      $('#rcPairedNote').hidden = !!o || !rc.peerSeen;
+    }
+    if (isC) {
+      $('#rcPairForm').hidden = paired;
+      $('#rcPairBtn').disabled = rc.busy;
+      setText($('#rcPairBtn'), rc.busy ? t('rcWorking') : t('rcConnect'));
+      $('#rcLocalPlay').hidden = !paired;
+      $('#rcLocalPlay').setAttribute('aria-checked', String(rc.localPlay));
+    }
+    const showConn = on && rc.role !== 'off' && paired && (isC || rc.peerSeen);
+    $('#rcConn').hidden = !showConn;
+    if (showConn) {
+      $('#rcConn').dataset.st = st;
+      setText($('#rcStatus'), t('rc.' + st));
+      setText($('#rcSeen'), rcSeenText());
+    }
+    $('#rcUnpair').hidden = !(on && paired && (isC || rc.peerSeen));
+    $('#rcErr').hidden = !rc.err; setText($('#rcErr'), rc.err);
+    $('#rcSumDot').dataset.st = rc.role === 'off' || !on ? 'off' : st;
+    setText($('#rcSumState'), rc.role === 'off' || !on ? '' : (isP ? t('rcRolePlayer') : t('rcRoleCtrl')) + ' · ' + t('rc.' + st));
+    // banner: controller "שולט בטלפון המחובר" / player "נשלט מרחוק" (+ a tap hint when the browser blocked audio)
+    const ban = $('#rcBanner'), live = on && paired && (isC || st === 'connected'); // player: only while a controller is there
+    ban.hidden = !live;
+    if (live) {
+      const blocked = isP && state.playing && ctx && ctx.state !== 'running' && rc.unlock;
+      setText($('#rcBannerText'), (isC ? t('rcBannerCtrl') : t('rcBannerPlayer')) + (blocked ? t('rcTapAudio') : ''));
+      ban.dataset.st = st;
+    }
+  }
+  function rcInit() {
+    const card = $('#rcCard');
+    if (!card) return;
+    document.querySelectorAll('#rcRoles [data-role]').forEach((b) => b.addEventListener('click', () => rcSetRole(b.dataset.role)));
+    $('#rcNewCode').addEventListener('click', () => rcNewOffer());
+    $('#rcPairForm').addEventListener('submit', (e) => { e.preventDefault(); rcClaim($('#rcCodeIn').value); });
+    $('#rcLocalPlay').addEventListener('click', () => rcSetLocalPlay(!rc.localPlay));
+    $('#rcUnpair').addEventListener('click', () => rcUnpair());
+    $('#rcBanner').addEventListener('click', () => { card.open = true; card.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+    // player: a remote "play" may arrive with no user gesture; on browsers that block that, the next tap anywhere
+    // resumes the sound (the APK's WebView allows it: mediaPlaybackRequiresUserGesture = false)
+    document.addEventListener('pointerdown', () => {
+      if (rc.role === 'player' && state.playing && ctx && ctx.state !== 'running') { ctx.resume(); startOutput(); }
+    }, true);
+    setInterval(() => {
+      if (rc.offer && Date.now() >= rc.offer.exp) rcEndOffer();
+      if (rc.role === 'player' && state.playing && ctx && ctx.state !== 'running') rc.unlock = true; else rc.unlock = false;
+      if (rc.role !== 'off') rcRender();
+    }, 1000);
+    if (rc.role !== 'off' && rcTransport) rcOpen().then(() => { if (rc.role === 'player' && !rc.peerSeen) rcNewOffer(); });
+    if (rc.role !== 'off' && !rcTransport) card.open = false;
+    rcRender();
+  }
+  function rcInfo() {
+    return { role: rc.role, transport: rcTransport ? rcTransport.name : null, paired: rcPaired(), status: rcStatus(),
+      mirror: rcMirror(), localPlay: rc.localPlay, code: rc.offer ? rc.offer.code : null, dev: rc.dev,
+      lastSeen: rc.room ? rc.room.lastSeen : 0, peerSeen: rc.peerSeen, counts: rc.room ? JSON.parse(JSON.stringify(rc.room.counts)) : null,
+      pending: Object.keys(rc.pending), snap: rcSnap(), remote: rc.remote && rc.remote.s, err: rc.err,
+      ctxState: ctx ? ctx.state : null };
   }
 
   if (QS.get('debug')) window.__shaket = { get ctx() { return ctx; }, nodes, loops, state, get engine() { return LOOPS ? 'loops' : 'live'; },
@@ -1951,6 +2961,35 @@
       p.el = 0; p.fake = f * progTotal(p) - now; progTick(); return p.el; },
     limiterInfo: () => ({ makeup: masterMakeup, est: MASTER_LIM_MAKEUP_EST, trim: masterTrim && masterTrim.gain.value,
       reduction: masterLim ? masterLim.reduction : null }) };
+  if (window.__shaket) window.__shaket.rc = { info: rcInfo, // v0.12 remote-control test hooks
+    setRole: rcSetRole, claim: rcClaim, newCode: rcNewOffer, unpair: rcUnpair, setLocalPlay: rcSetLocalPlay, act: rcDo, room: () => rc.room };
+  // v0.11.1: hidden Android diagnostics — a 1.5 s press on the footer opens the wrapper's native diag screen.
+  // Nothing visible changes on the web site; any move > 10px / scroll / release cancels the press.
+  (function diagHook() {
+    const foot = document.querySelector('footer');
+    if (!foot) return;
+    let timer = null, x0 = 0, y0 = 0;
+    const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    const start = (x, y) => {
+      cancel(); x0 = x; y0 = y;
+      timer = setTimeout(() => { timer = null; try { window.Android && Android.showDiag && Android.showDiag(); } catch (e) {} }, 1500);
+    };
+    const move = (x, y) => { if (timer && Math.hypot(x - x0, y - y0) > 10) cancel(); };
+    foot.addEventListener('touchstart', (e) => { const t = e.touches[0]; if (e.touches.length === 1) start(t.clientX, t.clientY); else cancel(); }, { passive: true });
+    foot.addEventListener('touchmove', (e) => { const t = e.touches[0]; if (t) move(t.clientX, t.clientY); }, { passive: true });
+    foot.addEventListener('touchend', cancel, { passive: true });
+    foot.addEventListener('touchcancel', cancel, { passive: true });
+    foot.addEventListener('mousedown', (e) => { if (e.button === 0) start(e.clientX, e.clientY); });
+    foot.addEventListener('mousemove', (e) => move(e.clientX, e.clientY));
+    foot.addEventListener('mouseup', cancel);
+    foot.addEventListener('mouseleave', cancel);
+    window.addEventListener('scroll', cancel, { passive: true });
+    // Android wrapper only: no text-selection / context menu stealing the long press
+    if (window.Android) {
+      foot.style.webkitUserSelect = foot.style.userSelect = 'none';
+      foot.addEventListener('contextmenu', (e) => e.preventDefault());
+    }
+  })();
   try { prepAudio(); } catch (e) { ctx = null; } // early, off the tap path; play() retries if this failed
-  loadLocalVoices().finally(() => { buildUI(); render(); });
+  Promise.all([loadLocalVoices(), loadAff()]).finally(() => { buildUI(); render(); });
 })();

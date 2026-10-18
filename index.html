@@ -18,6 +18,7 @@
 </head>
 <body>
 <div class="sky" aria-hidden="true"></div>
+<button id="rcBanner" class="rc-banner" type="button" hidden><span class="rc-dot" aria-hidden="true"></span><span id="rcBannerText"></span></button>
 
 <main class="app">
   <section class="hero">
@@ -105,6 +106,101 @@
       <div id="sessions" class="sessions" role="group" aria-label="מפגשים מודרכים" data-i18n-aria="sessionsAria"></div>
       <p id="voiceCaption" class="voice-caption" aria-live="polite" hidden></p>
     </div>
+
+    <div id="profCard" class="card prof" hidden>
+      <div class="card-head">
+        <h2 data-i18n="profTitle">הגדרות אישיות</h2>
+        <span id="profHello" class="prof-hello" hidden></span>
+      </div>
+      <span id="profListLbl" class="row-name" data-i18n="profUsers">משתמשים</span>
+      <div id="profList" class="prof-list" role="group" aria-labelledby="profListLbl"></div>
+      <div id="profPicks" class="prof-picks" hidden>
+        <span id="profPicksLbl" class="row-name" data-i18n="profPicks">שמות שהוקלטו בקול החם</span>
+        <div id="profPickChips" class="chips" role="group" aria-labelledby="profPicksLbl"></div>
+      </div>
+      <div class="prof-edit">
+        <label class="row-name" for="profName" data-i18n="profName">שם</label>
+        <input id="profName" class="text-in" type="text" maxlength="30" autocomplete="off" enterkeyhint="done">
+        <span id="profGLbl" class="row-name" data-i18n="profG">פנייה</span>
+        <div id="profG" class="chips prof-g" role="group" aria-labelledby="profGLbl">
+          <button type="button" class="chip" data-g="m" aria-pressed="false" data-i18n="gM">זכר</button>
+          <button type="button" class="chip" data-g="f" aria-pressed="false" data-i18n="gF">נקבה</button>
+        </div>
+      </div>
+      <p id="profTtsHint" class="prof-hint" hidden data-i18n="profTtsHint">אפשר לבקש משירה הקלטה בקול החם</p>
+      <button id="profAdd" type="button" class="chip prof-add" data-i18n="profAdd">+ משתמש חדש</button>
+    </div>
+
+    <div id="affCard" class="card aff" hidden>
+      <h2 data-i18n="affTitle">האפירמציות שלי</h2>
+      <p id="affGPrompt" class="aff-prompt" hidden><span data-i18n="affGPrompt">כדי שכל משפט ידבר אליך נכון — בחרו פנייה (זכר או נקבה) בהגדרות האישיות.</span> <button id="affGGo" type="button" class="linkish" data-i18n="affGGo">להגדרות</button></p>
+      <p id="affLangNote" class="aff-sub"></p>
+      <ol id="affList" class="aff-list" aria-label="האפירמציות שלי"></ol>
+      <p id="affEmpty" class="aff-empty" hidden data-i18n="affEmpty">הרשימה ריקה — מוסיפים משפטים מהספרייה או משפט משלכם.</p>
+      <div class="chips aff-actions">
+        <button id="affLibBtn" type="button" class="chip" aria-expanded="false" aria-controls="affLib" data-i18n="affLibBtn">+ הוספה מהספרייה</button>
+        <button id="affOwnBtn" type="button" class="chip" aria-expanded="false" aria-controls="affOwn" data-i18n="affOwnBtn">+ משפט משלי</button>
+      </div>
+      <form id="affOwn" class="aff-own" autocomplete="off" hidden>
+        <div class="aff-own-row">
+          <input id="affOwnIn" class="text-in" type="text" maxlength="160" enterkeyhint="done" aria-label="משפט משלי" data-i18n-aria="affOwnBtn">
+          <button type="submit" class="chip" data-i18n="affOwnAdd">הוספה</button>
+        </div>
+        <small id="affOwnNote" class="aff-small"></small>
+      </form>
+      <div id="affLib" class="aff-lib" hidden></div>
+      <p class="aff-wa" data-i18n="affWa">שלחו לשירה בוואטסאפ משפטים שתרצו בקול החם</p>
+      <div class="row aff-pause">
+        <span id="affPauseLbl" class="row-name"></span>
+        <input id="affPause" type="range" min="4" max="15" step="1" value="8" aria-labelledby="affPauseLbl">
+      </div>
+      <button id="affTwice" class="mini-switch" type="button" role="switch" aria-checked="false">
+        <span data-i18n="affTwice">לחזור על כל משפט פעמיים</span>
+        <span class="switch" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <details id="rcCard" class="card rc">
+      <summary class="rc-sum">
+        <h2 data-i18n="rcTitle">שליטה מרחוק</h2>
+        <span class="rc-sum-end"><span id="rcSumState" class="rc-sum-state"></span><span id="rcSumDot" class="rc-dot" data-st="off" aria-hidden="true"></span><span class="rc-chev" aria-hidden="true"></span></span>
+      </summary>
+      <div class="rc-body">
+        <p id="rcNote" class="soon rc-note" data-i18n="rcOffNote">השירות טרם הופעל</p>
+        <div id="rcRoles" class="chips rc-roles" role="group" aria-label="תפקיד הטלפון הזה" data-i18n-aria="rcRolesAria">
+          <button type="button" class="chip" data-role="off" aria-pressed="true"><span data-i18n="rcRoleOff">כבוי</span></button>
+          <button type="button" class="chip" data-role="player" aria-pressed="false"><span data-i18n="rcRolePlayer">נגן</span><small data-i18n="rcRolePlayerSub">מקבל פקודות</small></button>
+          <button type="button" class="chip" data-role="controller" aria-pressed="false"><span data-i18n="rcRoleCtrl">שלט</span><small data-i18n="rcRoleCtrlSub">שולט בנגן</small></button>
+        </div>
+        <div id="rcPlayerPane" class="rc-pane" hidden>
+          <div id="rcCodeBox" class="rc-codebox" hidden>
+            <span class="row-name" data-i18n="rcCodeLbl">קוד התאמה — מקלידים אותו בטלפון השולט</span>
+            <p id="rcCode" class="rc-code" dir="ltr" aria-live="polite"></p>
+            <small id="rcCodeLeft" class="rc-small"></small>
+          </div>
+          <p id="rcPairedNote" class="rc-small" data-i18n="rcPairedNote" hidden>טלפון שולט מחובר. אפשר להוסיף שלט נוסף עם קוד חדש.</p>
+          <button id="rcNewCode" type="button" class="chip" data-i18n="rcNewCode">קוד חדש</button>
+        </div>
+        <div id="rcCtrlPane" class="rc-pane" hidden>
+          <form id="rcPairForm" class="rc-pair" autocomplete="off">
+            <label for="rcCodeIn" class="row-name" data-i18n="rcCodeIn">קוד מהטלפון המנגן (6 ספרות)</label>
+            <div class="rc-pair-row">
+              <input id="rcCodeIn" class="rc-input" type="text" inputmode="numeric" pattern="[0-9 ]*" maxlength="7" dir="ltr" placeholder="000 000" autocomplete="one-time-code">
+              <button id="rcPairBtn" type="submit" class="chip">התחברות</button>
+            </div>
+          </form>
+          <button id="rcLocalPlay" class="mini-switch" type="button" role="switch" aria-checked="false" hidden>
+            <span data-i18n="rcLocalPlay">לנגן גם אצלי</span>
+            <span class="switch" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div id="rcConn" class="rc-conn" data-st="disconnected" aria-live="polite" hidden>
+          <span class="rc-dot" aria-hidden="true"></span><span id="rcStatus"></span><small id="rcSeen"></small>
+        </div>
+        <p id="rcErr" class="rc-err" role="alert" hidden></p>
+        <button id="rcUnpair" type="button" class="chip rc-unpair" data-i18n="rcUnpair" hidden>נתק</button>
+      </div>
+    </details>
   </section>
 </main>
 
@@ -116,8 +212,9 @@
   </div>
 </div>
 
-<footer class="foot">v0.11 · <span data-i18n="foot">צלילים לנשימה ולמנוחה</span></footer>
+<footer class="foot">v0.13 · <span data-i18n="foot">צלילים לנשימה ולמנוחה</span></footer>
 
+<script src="remote.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
