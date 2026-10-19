@@ -1,5 +1,9 @@
 'use strict';
-/* שקט v0.13.1 — Web Audio meditation app. UI is Hebrew-only (RTL); guided meditations in Hebrew or Russian.
+/* שקט v0.14.0 — Web Audio meditation app. UI is Hebrew-only (RTL); guided meditations in Hebrew or Russian.
+   v0.14: Solfeggio tones — a new 'solfeggio' layer (off by default) with its own card: the 9 classic frequencies
+   (174…963 Hz), each a soft sine + one quiet octave partial, slow breathing, gentle low-pass, per-tone level matching
+   and an equal-power 1.5 s crossfade between tones. Synthesized live in both engines; bypasses the duck bus (like
+   binaural). The chosen frequency is remembered (localStorage) and goes through rcDo ('solfHz'). New preset 'solf528'.
    v0.13.1: a voice clip that fails to load is never skipped at zero length (a broken session used to race to its end):
    it is spoken by the phone's voice, else captioned for its planned length, and logged (APK: Android.diag). The APK
    wrapper now 404s missing assets on HEAD too (voice 5 "had" the affirmations, so the hand-over never happened);
@@ -34,14 +38,19 @@
     { id: 'theta', beat: 6 },
   ];
   const LAYERS = [
-    { id: 'binaural', icon: '〰️', scale: 0.22, send: 0, on: true, vol: 0.45 },
+    { id: 'binaural', icon: '〰️', scale: 0.22, send: 0, on: true, vol: 0.45, noDuck: true },
     { id: 'music', icon: '🎵', scale: 1, send: 0.75, on: true, vol: 0.7 },
     { id: 'waves', icon: '🌊', scale: 0.55, send: 0, on: false, vol: 0.5 },
     { id: 'rain', icon: '🌧️', scale: 0.4, send: 0.12, on: false, vol: 0.5 },
     { id: 'wind', icon: '🍃', scale: 0.5, send: 0.05, on: false, vol: 0.45 },
     { id: 'birds', icon: '🐦', scale: 0.35, send: 0.6, on: false, vol: 0.4 },
     { id: 'stream', icon: '💧', scale: 0.4, send: 0.1, on: false, vol: 0.45 },
+    // v0.14: its UI row lives in its own card (#solfLayer); like binaural it skips the duck bus (never pumps under the voice).
+    // scale 0.12: at vol 0.45 the tone sits ≈ 6.7 dB (RMS) under the music layer at its default 0.7; at vol 1 ≈ level with it
+    { id: 'solfeggio', icon: '🎶', scale: 0.12, send: 0, on: false, vol: 0.45, noDuck: true },
   ];
+  // v0.14: the 9 classic Solfeggio tones (labels: I18N 'solf.<hz>'); the chosen one is remembered on this phone
+  const SOLF_HZ = [174, 285, 396, 417, 528, 639, 741, 852, 963], SOLF_DEFAULT = 528, SOLF_KEY = 'shaket.solfHz';
   const PRESETS = [
     { id: 'quiet', mode: 'alpha',
       layers: { binaural: 0.4, music: 0.7, waves: 0.25, wind: 0.2 } },
@@ -51,6 +60,9 @@
       layers: { binaural: 0.3, music: 0.45, waves: 0.8, wind: 0.25 } },
     { id: 'forest', mode: 'theta',
       layers: { binaural: 0.25, music: 0.4, rain: 0.65, wind: 0.35, birds: 0.3, stream: 0.3 } },
+    // v0.14: binaural off (not listed); `solfHz` picks the tone
+    { id: 'solf528', mode: 'alpha', solfHz: 528,
+      layers: { solfeggio: 0.45, music: 0.4, waves: 0.2 } },
   ];
   const TIMERS = [0, 10, 20, 30, 60];
 
@@ -106,6 +118,11 @@
       'layer.binaural': 'פעימות בינאוריות', 'layer.music': 'מוזיקת רקע', 'layer.music.sub': 'פד חם ופעמונים',
       'layer.waves': 'גלים', 'layer.rain': 'גשם', 'layer.wind': 'עלים ברוח', 'layer.birds': 'ציפורים', 'layer.stream': 'נחל',
       'preset.quiet': 'רגע של שקט', 'preset.sleep': 'לפני שינה', 'preset.sea': 'ים', 'preset.forest': 'יער בגשם',
+      // v0.14 Solfeggio tones (traditional names only — no health claims)
+      solfTitle: 'תדרי סולפג׳יו', solfSub: 'צלילים מסורתיים להרגעה', solfHzAria: 'בחירת תדר', hz: (n) => n + ' Hz',
+      'layer.solfeggio': 'צליל סולפג׳יו', 'preset.solf528': 'סולפג׳יו 528',
+      'solf.174': 'הרפיה', 'solf.285': 'גוף', 'solf.396': 'שחרור פחד', 'solf.417': 'שינוי', 'solf.528': 'אהבה',
+      'solf.639': 'קשר', 'solf.741': 'בהירות', 'solf.852': 'אינטואיציה', 'solf.963': 'שלמות',
       // voice.<id>: none in Hebrew -> the VOICES registry name is used
     },
     ru: {
@@ -131,6 +148,10 @@
       'layer.binaural': 'Бинауральные ритмы', 'layer.music': 'Фоновая музыка', 'layer.music.sub': 'тёплый пэд и колокольчики',
       'layer.waves': 'Волны', 'layer.rain': 'Дождь', 'layer.wind': 'Листва на ветру', 'layer.birds': 'Птицы', 'layer.stream': 'Ручей',
       'preset.quiet': 'Минута тишины', 'preset.sleep': 'Перед сном', 'preset.sea': 'Море', 'preset.forest': 'Лес под дождём',
+      solfTitle: 'Частоты сольфеджио', solfSub: 'Традиционные тона для спокойствия', solfHzAria: 'Выбор частоты', hz: (n) => n + ' Гц',
+      'layer.solfeggio': 'Тон сольфеджио', 'preset.solf528': 'Сольфеджио 528',
+      'solf.174': 'Расслабление', 'solf.285': 'Тело', 'solf.396': 'Отпустить страх', 'solf.417': 'Перемены', 'solf.528': 'Любовь',
+      'solf.639': 'Связь', 'solf.741': 'Ясность', 'solf.852': 'Интуиция', 'solf.963': 'Целостность',
       'voice.marin': 'Голос 1 — мягкий', 'voice.shimmer': 'Голос 2 — светлый',
       'voice.sage': 'Голос 3 — спокойный', 'voice.cedar': 'Голос 4 — глубокий',
       lentVoice: (n) => 'Аффирмации: ' + n,
@@ -616,8 +637,11 @@
     try { const v = parseFloat(localStorage.getItem(VOICE_VOL_KEY)); return v >= 0 && v <= 1 ? v : VOICE_VOL_DEFAULT; }
     catch (e) { return VOICE_VOL_DEFAULT; }
   })();
+  const savedSolfHz = (() => {
+    try { const v = +localStorage.getItem(SOLF_KEY); return SOLF_HZ.includes(v) ? v : SOLF_DEFAULT; } catch (e) { return SOLF_DEFAULT; }
+  })();
   const state = {
-    voiceVol: savedVoiceVol,
+    voiceVol: savedVoiceVol, solfHz: savedSolfHz,
     playing: false, mode: 'alpha', master: 0.8, timerMin: 0, endAt: 0, remainMs: 0, preset: null,
     layers: Object.fromEntries(LAYERS.map((l) => [l.id, { on: l.on, vol: l.vol }])),
   };
@@ -824,13 +848,13 @@
     comp.connect(masterLim); voiceGate.connect(masterLim); masterLim.connect(masterTrim);
     routeOutput();
 
-    // duck bus: music + nature (+ their reverb) dip under the guided voice; binaural bypasses it
+    // duck bus: music + nature (+ their reverb) dip under the guided voice; binaural + solfeggio (noDuck) bypass it
     duck = gain(1); duck.connect(masterGain);
 
     // per layer: level gain -> sleep-fade gain -> bus (reverb send taken after the fade, so tails fade too)
     LAYERS.forEach((l) => {
       const g = gain(0), f = gain(1);
-      chain(g, f, l.id === 'binaural' ? masterGain : duck);
+      chain(g, f, l.noDuck ? masterGain : duck);
       nodes[l.id] = { gain: g, fade: f };
     });
     bellBus = gain(1); bellBus.connect(nodes.music.gain); // bells get their own fade (they leave first in sleep mode)
@@ -926,13 +950,13 @@
   function startLayers() {
     if (started) return;
     started = true;
-    if (LOOPS) { // loops: only binaural is synthesized live (2 oscillators); loops start as they finish decoding
-      buildBinaural(); LAYERS.forEach((l) => applyLayer(l.id));
+    if (LOOPS) { // loops: only binaural + solfeggio are synthesized live (2 + 3 oscillators); loops start as they finish decoding
+      buildBinaural(); buildSolfeggio(); LAYERS.forEach((l) => applyLayer(l.id));
       layersLive = true;
       return;
     }
     applyLayer('music'); applyLayer('birds'); // event-driven layers: no persistent sources
-    const steps = [['binaural', buildBinaural], ['waves', buildWaves], ['rain', buildRain], ['wind', buildWind], ['stream', buildStream]];
+    const steps = [['binaural', buildBinaural], ['solfeggio', buildSolfeggio], ['waves', buildWaves], ['rain', buildRain], ['wind', buildWind], ['stream', buildStream]];
     steps.forEach(([id, fn], k) => setTimeout(() => { fn(); applyLayer(id); }, k * STAGGER_MS));
     setTimeout(() => { layersLive = true; kickMusic(); }, steps.length * STAGGER_MS);
   }
@@ -1028,6 +1052,88 @@
     const m = MODES.find((x) => x.id === id), t = ctx.currentTime;
     nodes.binaural.L.frequency.setTargetAtTime(CARRIER - m.beat / 2, t, 1.2);
     nodes.binaural.R.frequency.setTargetAtTime(CARRIER + m.beat / 2, t, 1.2);
+  }
+
+  // ---------- solfeggio tones (v0.14) ----------
+  // A tone "voice" = a sine at the chosen frequency + ONE quiet partial for body: the octave below (−18 dB) while it
+  // stays ≥ SOLF_SUB_MIN (phone speakers can't play lower), else the octave above (−22 dB) — so 174 / 285 get 348 / 570.
+  // Shared bus: breathing gain (1/11 Hz = the orb's 11 s breath, 0.85 ↔ 1.0 = 15 % depth) -> Butterworth low-pass at
+  // 1.2 kHz (softens 852 / 963) -> the layer gain (noDuck: straight into the master chain + limiter, never ducked).
+  // Level per tone: −1.1 dB per octave above 174 Hz (higher tones a little quieter: −2.7 dB at 963), measured AFTER
+  // the low-pass (its response is divided out), so switching tones never jumps in loudness. Switching = an equal-power
+  // crossfade (sin / cos, SOLF_XFADE s) between the old and the new voice; a voice always starts from gain 0 and leaves
+  // through a ramp to 0 — never a click. Voices exist only while the layer is audible (stopped SOLF_STOP_MS after it
+  // fades out), so an off layer costs no CPU; the bus (filter + 0.09 Hz LFO) is built once.
+  const SOLF_XFADE = 1.5, SOLF_STOP_MS = 6000, SOLF_LP = 1200, SOLF_TILT_DB = -1.1, SOLF_SUB_MIN = 150;
+  const SOLF_SUB = 0.125, SOLF_OCT = 0.08, SOLF_BREATH = 1 / 11, SOLF_DEPTH = 0.15;
+  const solfCurve = (up) => {
+    const n = 64, a = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * Math.PI / 2; a[i] = up ? Math.sin(x) : Math.cos(x); }
+    a[n - 1] = up ? 1 : 0;
+    return a;
+  };
+  const SOLF_IN = solfCurve(true), SOLF_OUT = solfCurve(false);
+  const solfPartial = (hz) => (hz / 2 >= SOLF_SUB_MIN ? [hz / 2, SOLF_SUB] : [hz * 2, SOLF_OCT]);
+  function buildSolfeggio() {
+    const S = nodes.solfeggio;
+    if (S.bus) return;
+    const breath = gain(1 - SOLF_DEPTH / 2), lp = filt('lowpass', SOLF_LP, -3.0103); // lowpass Q is in dB: −3 dB = Butterworth
+    chain(breath, lp, S.gain);
+    S.lfo = lfo(SOLF_BREATH, SOLF_DEPTH / 2, breath.gain);
+    // per-tone pre-gain: post-filter RMS of (fundamental + partial) lands exactly on the tilt target
+    const fr = new Float32Array(SOLF_HZ.length * 2), mag = new Float32Array(fr.length), ph = new Float32Array(fr.length);
+    SOLF_HZ.forEach((hz, i) => { fr[2 * i] = hz; fr[2 * i + 1] = solfPartial(hz)[0]; });
+    try { lp.getFrequencyResponse(fr, mag, ph); } catch (e) { mag.fill(1); }
+    S.lvl = {};
+    SOLF_HZ.forEach((hz, i) => {
+      const a = solfPartial(hz)[1], h0 = mag[2 * i] || 1, h1 = mag[2 * i + 1] || 1;
+      S.lvl[hz] = Math.pow(10, SOLF_TILT_DB * Math.log2(hz / SOLF_HZ[0]) / 20) / Math.sqrt(h0 * h0 + a * a * h1 * h1);
+    });
+    S.bus = breath; S.voice = null; S.stopTO = 0;
+    solfSync();
+  }
+  function solfVoice(hz) {
+    const S = nodes.solfeggio, now = ctx.currentTime, t0 = now + 0.02;
+    if (S.voice) solfFade(S.voice, now, t0, SOLF_XFADE);
+    const [pf, pa] = solfPartial(hz), k = S.lvl[hz], g = gain(0);
+    const oscs = [[hz, k], [pf, k * pa]].map(([f, a]) => {
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+      chain(o, gain(a), g); o.start(now); // a sine starts at 0, under a gain of 0
+      return o;
+    });
+    g.connect(S.bus);
+    g.gain.setValueAtTime(0, now);
+    g.gain.setValueCurveAtTime(SOLF_IN, t0, SOLF_XFADE);
+    S.voice = { hz, g, oscs };
+  }
+  // fade a voice out from wherever its gain is (mid-crossfade too) over `dur`, then stop + disconnect it
+  function solfFade(v, now, t0, dur) {
+    const p = v.g.gain, x = p.value;
+    hold(p, now);
+    if (x > 1e-4) p.setValueCurveAtTime(SOLF_OUT.map((c) => c * x), t0, dur); else p.setValueAtTime(0, t0);
+    const end = t0 + dur + 0.05;
+    v.oscs.forEach((o) => { try { o.stop(end); } catch (e) { /* noop */ } });
+    v.oscs[0].onended = () => { v.g.disconnect(); };
+  }
+  // bring the tone voice in line with the mixer state + chosen frequency (layer on/off/volume, preset, Hz change)
+  function solfSync() {
+    const S = nodes.solfeggio;
+    if (!ctx || !S || !S.bus) return;
+    if (audible('solfeggio')) {
+      clearTimeout(S.stopTO); S.stopTO = 0;
+      if (!S.voice || S.voice.hz !== state.solfHz) solfVoice(state.solfHz);
+    } else if (S.voice && !S.stopTO) {
+      S.stopTO = setTimeout(() => { // the layer gain has faded to silence by now: release the oscillators
+        S.stopTO = 0;
+        if (audible('solfeggio') || !S.voice) return;
+        const t = ctx.currentTime; solfFade(S.voice, t, t + 0.01, 0.1); S.voice = null;
+      }, SOLF_STOP_MS);
+    }
+  }
+  function setSolfHz(hz) {
+    state.solfHz = hz;
+    try { localStorage.setItem(SOLF_KEY, String(hz)); } catch (e) { /* private mode: not remembered */ }
+    solfSync();
   }
 
   function buildWaves() {
@@ -1235,6 +1341,7 @@
     g.setValueAtTime(g.value, t);
     g.setTargetAtTime(target, t, instant ? 0.01 : 0.6);
     if (id === 'music' && s.on) kickMusic();
+    if (id === 'solfeggio') solfSync();
     if (LOOPS && id !== 'binaural') syncLoops();
   }
 
@@ -1290,6 +1397,7 @@
       state.layers[l.id] = v ? { on: true, vol: v } : { on: false, vol: state.layers[l.id].vol };
     });
     setMode(p.mode);
+    if (p.solfHz) setSolfHz(p.solfHz);
     if (!state.playing) play();
     if (ctx) LAYERS.forEach((l) => {
       // gentle crossfade between presets
@@ -1297,6 +1405,7 @@
       g.cancelScheduledValues(t); g.setValueAtTime(g.value, t);
       g.setTargetAtTime(s.on ? curve(s.vol) * l.scale : 0, t, 1);
     });
+    solfSync();
     syncLoops();
     kickMusic();
     render();
@@ -1308,7 +1417,8 @@
   const SLEEP_DURS = [20, 30, 45, 60];
   const SLEEP_MIX = { id: 'sleepmode', mode: 'delta', layers: { binaural: 0.45, music: 0.42, rain: 0.3 } };
   const SLEEP_STAGES = { bells: [0.03, 0.4], music: [0.1, 0.62], nature: [0.2, 0.85], binaural: [0.3, 1] }; // fractions of duration
-  const SLEEP_GROUP = { binaural: 'binaural', music: 'music', birds: 'bells', waves: 'nature', rain: 'nature', wind: 'nature', stream: 'nature' };
+  const SLEEP_GROUP = { binaural: 'binaural', music: 'music', birds: 'bells', waves: 'nature', rain: 'nature', wind: 'nature', stream: 'nature',
+    solfeggio: 'music' }; // (the sleep mix has no solfeggio; the tone would leave with the music)
   const SLEEP_TEST = (() => { try { return Math.max(0, +new URLSearchParams(location.search).get('sleeptest') || 0); } catch (e) { return 0; } })();
   const sleep = { on: false, done: false, min: 30, voice: true, endAt: 0, timerStash: 0 };
   const fadeCurve = (() => { // exponential decay normalised to land exactly on 0
@@ -1961,7 +2071,7 @@
   // ---------- UI ----------
   const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
   const setFill = (r) => r.style.setProperty('--p', (r.value * 100) + '%');
-  const ui = { presets: {}, modes: {}, timers: {}, layers: {}, sessions: {}, durs: {}, prog: {}, voices: {}, voiceNames: {}, voiceHints: {}, sleepDurs: {} };
+  const ui = { presets: {}, modes: {}, timers: {}, layers: {}, sessions: {}, durs: {}, prog: {}, voices: {}, voiceNames: {}, voiceHints: {}, sleepDurs: {}, solf: {} };
 
   // ---------- scroll-safe touch (v0.9) ----------
   // Feedback from a real phone: scrolling the page kept changing the sound. Two guards:
@@ -2055,6 +2165,13 @@
     const s = state.layers[id]; s.vol = v; s.on = s.vol > 0.001;
     state.preset = null; applyLayer(id); render();
   }
+  // v0.14: picking a tone; the chip handler also turns the layer on (a separate 'L.solfeggio.on' op, so a paired
+  // player applies exactly the same two steps). A changed tone leaves a preset only while the tone is audible.
+  function uiSolfHz(hz) {
+    if (state.layers.solfeggio.on && hz !== state.solfHz) state.preset = null;
+    setSolfHz(hz);
+    render();
+  }
   function uiMaster(v) {
     state.master = v;
     if (ctx) { masterGain.gain.setTargetAtTime(curve(state.master), ctx.currentTime, 0.15); setVoiceOut(0.15); }
@@ -2093,8 +2210,18 @@
       const rw = scrollSafeRange(r, 'layer-range');
       tog.addEventListener('click', () => rcDo(`L.${l.id}.on`, !state.layers[l.id].on));
       r.addEventListener('input', () => { setFill(r); rcDo(`L.${l.id}.vol`, +r.value); });
-      row.append(tog, name, rw); $('#layers').append(row);
+      row.append(tog, name, rw); $(l.id === 'solfeggio' ? '#solfLayer' : '#layers').append(row);
       ui.layers[l.id] = { row, tog, r, name };
+    });
+    SOLF_HZ.forEach((hz) => { // v0.14: tone picker — Hz + its traditional name
+      const b = el('button', 'chip'); b.type = 'button';
+      const n = el('span', 'hz'), sm = el('small'); n.dir = 'ltr';
+      b.append(n, sm);
+      b.addEventListener('click', () => {
+        rcDo('solfHz', hz);
+        if (!state.layers.solfeggio.on) rcDo('L.solfeggio.on', true);
+      });
+      $('#solfHz').append(b); ui.solf[hz] = { b, n, sm };
     });
     VOICES.forEach((v) => {
       const b = el('button', 'chip'); b.type = 'button';
@@ -2473,6 +2600,7 @@
     });
     VOICES.forEach((v) => { ui.voiceNames[v.id].textContent = voiceName(v); ui.voiceHints[v.id].textContent = t('dlFirst'); });
     SLEEP_DURS.forEach((min) => { ui.sleepDurs[min].textContent = t('min', min); });
+    SOLF_HZ.forEach((hz) => { const u = ui.solf[hz]; u.n.textContent = t('hz', hz); u.sm.textContent = t('solf.' + hz); });
   }
   // meditation language (v0.9): filters sessions + voices; the UI stays Hebrew. Never touches the audio graph or
   // sleep mode; a running session in the other language is stopped (its tile would otherwise be hidden).
@@ -2577,6 +2705,8 @@
       u.tog.setAttribute('aria-pressed', String(s.on));
       if (document.activeElement !== u.r) { u.r.value = s.vol; setFill(u.r); }
     });
+    $('#solfCard').classList.toggle('on', state.layers.solfeggio.on);
+    for (const hz in ui.solf) ui.solf[hz].b.setAttribute('aria-pressed', String(state.solfHz === +hz));
     const mr = $('#master'), vv = $('#voiceVol'); // v0.12: may change remotely
     if (document.activeElement !== mr && +mr.value !== state.master) { mr.value = state.master; setFill(mr); }
     if (document.activeElement !== vv && +vv.value !== state.voiceVol) { vv.value = state.voiceVol; setFill(vv); vvText(); }
@@ -2640,12 +2770,13 @@
   function rcSnap() {
     const s = { playing: state.playing, preset: state.preset, mode: state.mode, master: r2(state.master), timerMin: state.timerMin,
       sleepOn: sleep.on, sleepMin: sleep.min, sleepVoice: sleep.voice, medLang, voiceId: voice.id, voiceVol: r2(state.voiceVol),
-      session: voice.session };
+      session: voice.session, solfHz: state.solfHz };
     LAYERS.forEach((l) => { s[`L.${l.id}.on`] = state.layers[l.id].on; s[`L.${l.id}.vol`] = r2(state.layers[l.id].vol); });
     return s;
   }
   // order for applying a whole snapshot: settings first, then what starts things, play/pause last
-  const RC_ORDER = ['medLang', 'voiceId', 'voiceVol', 'master', 'timerMin', 'preset', 'mode',
+  // (solfHz before preset: a preset that names its own tone, or turns the layer off, then has the last word)
+  const RC_ORDER = ['medLang', 'voiceId', 'voiceVol', 'master', 'timerMin', 'solfHz', 'preset', 'mode',
     ...LAYERS.flatMap((l) => [`L.${l.id}.on`, `L.${l.id}.vol`]), 'sleepMin', 'sleepVoice', 'sleepOn', 'session', 'playing'];
   const rcValid = (k, v) => {
     const L = rcLayerKey(k);
@@ -2656,6 +2787,7 @@
       case 'mode': return MODES.some((m) => m.id === v);
       case 'master': case 'voiceVol': return typeof v === 'number' && v >= 0 && v <= 1;
       case 'timerMin': return TIMERS.includes(v);
+      case 'solfHz': return SOLF_HZ.includes(v);
       case 'sleepMin': return SLEEP_DURS.includes(v);
       case 'medLang': return LANGS.includes(v);
       case 'voiceId': return VOICES.some((x) => x.id === v);
@@ -2684,6 +2816,7 @@
       case 'master': uiMaster(v); break;
       case 'voiceVol': uiVoiceVol(v); break;
       case 'timerMin': if (tap || v !== state.timerMin) uiTimer(v); break;
+      case 'solfHz': if (v !== state.solfHz) uiSolfHz(v); break;
       case 'sleepOn': if (v && !sleep.on) startSleep(); else if (!v && (sleep.on || sleep.done)) exitSleep(false); break;
       case 'sleepMin': sleep.min = v; render(); break;
       case 'sleepVoice': sleep.voice = v; render(); break;
@@ -2711,6 +2844,7 @@
       case 'master': state.master = v; break;
       case 'voiceVol': state.voiceVol = v; break;
       case 'timerMin': state.timerMin = v; break;
+      case 'solfHz': state.solfHz = v; break; // shown only: the player's tone is not remembered on this phone
       case 'sleepOn': sleep.on = v; sleep.done = false; break;
       case 'sleepMin': sleep.min = v; break;
       case 'sleepVoice': sleep.voice = v; break;
@@ -2722,6 +2856,7 @@
   }
   // optimistic local preview of a command (until the player's state confirms it)
   function rcPreview(k, v) {
+    const prevHz = state.solfHz;
     rcMirrorKey(k, v);
     const L = rcLayerKey(k);
     if (L) {
@@ -2732,7 +2867,9 @@
     } else if (k === 'preset') {
       const p = PRESETS.find((x) => x.id === v);
       if (p) { LAYERS.forEach((l) => { const pv = p.layers[l.id]; state.layers[l.id] = pv ? { on: true, vol: pv } : { on: false, vol: state.layers[l.id].vol }; }); state.mode = p.mode; state.playing = true; }
-    } else if (k === 'mode') { state.preset = null; state.layers.binaural.on = true; }
+      if (p && p.solfHz) state.solfHz = p.solfHz;
+    } else if (k === 'solfHz') { if (state.layers.solfeggio.on && v !== prevHz) state.preset = null; }
+    else if (k === 'mode') { state.preset = null; state.layers.binaural.on = true; }
     else if ((k === 'session' && v) || (k === 'sleepOn' && v)) state.playing = true;
     else if (k === 'playing' && !v) sleep.on = false;
   }
@@ -3031,7 +3168,24 @@
     progSeek: (f) => { const p = prog; if (!p) return null; const now = p.t0 == null ? 0 : ctx.currentTime - p.t0 - p.slip;
       p.el = 0; p.fake = f * progTotal(p) - now; progTick(); return p.el; },
     limiterInfo: () => ({ makeup: masterMakeup, est: MASTER_LIM_MAKEUP_EST, trim: masterTrim && masterTrim.gain.value,
-      reduction: masterLim ? masterLim.reduction : null }) };
+      reduction: masterLim ? masterLim.reduction : null }),
+    // v0.14: render the REAL solfeggio code (buildSolfeggio / solfSync / solfVoice) into an OfflineAudioContext.
+    // seq = [[time s, hz], …] (first at 0); the layer gain is 1 (scale + slider not applied). The live ctx/nodes are
+    // swapped out only for the synchronous build / switch calls (headless clocks are frozen, so live capture can't work).
+    solfOffline: (seq, dur, sr = 48000) => {
+      const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext, oc = new OAC(1, Math.round(dur * sr), sr);
+      const keepHz = state.solfHz;
+      const S = { gain: null, fade: null };
+      const inOc = (fn) => {
+        const saved = { ctx, S: nodes.solfeggio, hz: state.solfHz, L: state.layers.solfeggio };
+        ctx = oc; nodes.solfeggio = S; state.layers.solfeggio = { on: true, vol: 1 };
+        try { fn(); } finally { ctx = saved.ctx; nodes.solfeggio = saved.S; state.solfHz = saved.hz; state.layers.solfeggio = saved.L; }
+      };
+      inOc(() => { S.gain = gain(1); S.gain.connect(oc.destination); state.solfHz = seq[0][1]; buildSolfeggio(); });
+      seq.slice(1).forEach(([at, hz]) => oc.suspend(at).then(() => { inOc(() => { state.solfHz = hz; solfSync(); clearTimeout(S.stopTO); }); oc.resume(); }));
+      state.solfHz = keepHz;
+      return oc.startRendering().then((b) => b.getChannelData(0));
+    } };
   if (window.__shaket) window.__shaket.rc = { info: rcInfo, // v0.12 remote-control test hooks
     setRole: rcSetRole, claim: rcClaim, newCode: rcNewOffer, unpair: rcUnpair, setLocalPlay: rcSetLocalPlay, act: rcDo, room: () => rc.room };
   // v0.11.1: hidden Android diagnostics — a 1.5 s press on the footer opens the wrapper's native diag screen.
