@@ -530,6 +530,40 @@ body.sleeping { overflow: hidden; }
 .aff-wa::before { content: "💬 "; }
 .aff-pause { gap: 6px; }
 
+/* ---------- own-voice recorder (v0.16) ---------- */
+/* inline under its row (a flex item taking the whole line, after the revealed controls). Large-text safe: everything
+   wraps, no fixed heights on text, min-width: 0 on every flex/grid child; the round button keeps its tap size. */
+.icon-btn.mic[aria-expanded="true"] { color: var(--text); border-color: rgba(240,138,122,.6); background: rgba(240,138,122,.12); }
+.icon-btn.recdel { padding: 0 12px; }
+.rec {
+  flex: 1 1 100%; min-width: 0; display: grid; gap: 10px; margin: 0 0 8px; margin-inline-start: 30px; padding: 12px;
+  border-radius: 16px; background: rgba(0,0,0,.18); border: 1px solid rgba(127,220,207,.22);
+}
+.rec-hint { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--muted); overflow-wrap: break-word; }
+.rec-main { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; min-width: 0; }
+.rec-btn {
+  flex: none; width: 64px; height: 64px; padding: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+  background: radial-gradient(circle at 40% 35%, rgba(255,255,255,.10), rgba(255,255,255,.03)); border: 2px solid rgba(240,138,122,.65);
+  transition: box-shadow .3s, border-color .3s;
+}
+.rec-ico { width: 26px; height: 26px; border-radius: 50%; background: #f08a7a; transition: border-radius .2s, transform .2s; }
+.rec-btn[aria-pressed="true"] { border-color: #f08a7a; animation: rec-pulse 1.6s ease-in-out infinite; }
+.rec-btn[aria-pressed="true"] .rec-ico { border-radius: 5px; transform: scale(.82); }
+.rec-btn:disabled { opacity: .45; cursor: default; }
+.rec-btn:focus-visible { outline: 2px solid var(--teal-soft); outline-offset: 3px; }
+@keyframes rec-pulse { 50% { box-shadow: 0 0 0 8px rgba(240,138,122,.18); } }
+.rec-live { flex: 1 1 8em; min-width: 0; display: grid; gap: 6px; }
+.rec-meter { height: 8px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }
+/* the page is RTL: the level grows from the right (inline start) */
+.rec-meter i { display: block; height: 100%; transform-origin: right; transform: scaleX(0); transition: transform .06s linear; background: linear-gradient(270deg, var(--teal), var(--teal-soft)); }
+.rec-meter.on i { background: linear-gradient(270deg, #5fe0b4, #c8fff0); }
+.rec-time { min-width: 0; font-size: 14px; color: var(--text); font-variant-numeric: tabular-nums; overflow-wrap: break-word; }
+.rec-msg { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--teal-soft); overflow-wrap: break-word; }
+.rec-msg.warn { color: #f0d2b0; }
+.rec-acts { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.rec-acts .chip { flex: 1 1 auto; min-width: min(100%, max-content); min-height: 44px; padding: 6px 14px; }
+.rec-acts .rec-save:not(:disabled) { border-color: rgba(127,220,207,.55); background: linear-gradient(135deg, rgba(63,184,176,.30), rgba(79,70,184,.30)); }
+
 /* ---------- solfeggio tones (v0.14) ---------- */
 /* tone picker: 3 columns on a phone at normal text; the em minimum (scales with the font) drops it to 2, then 1
    column under large text (Android font scale) — the labels never squeeze, overlap or overflow */

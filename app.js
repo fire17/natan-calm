@@ -1,5 +1,11 @@
 'use strict';
-/* שקט v0.15.0 — Web Audio meditation app. UI is Hebrew-only (RTL); guided meditations in Hebrew or Russian.
+/* שקט v0.16.0 — Web Audio meditation app. UI is Hebrew-only (RTL); guided meditations in Hebrew or Russian.
+   v0.16: own-voice affirmations — 🎙 in a row's revealed controls ("האפירמציות שלי") opens an inline recorder: the user
+   reads the sentence exactly as shown (first person) and it is recorded, auto-stopped on silence, processed in the
+   browser (high-pass 70 Hz, edge-silence trim, BS.1770 loudness to the guided clips' level, −1 dBFS peak guard, 5 ms
+   fades) and stored as WAV in IndexedDB on this phone only (profile + language + gender + sentence; never uploaded,
+   never mirrored). In the affirmations session an own recording beats the warm clip, the phone's voice and the
+   caption. The app's own sound pauses while the mic is open and comes back after. APK: RECORD_AUDIO + WebView mic grant.
    v0.15: playlists + loop — a "רשימת השמעה" card per meditation language (local-only, never mirrored): guided sessions
    and the affirmations session in sequence through the same session player, a 0/10/30/60 s voice gap (background sound
    continues), "חזרה בלולאה", and a "🔁" repeat-one switch on the session player (= a 1-item playlist in loop mode).
@@ -141,6 +147,18 @@
       plDone: 'הרשימה הסתיימה', plMirrorNote: 'הכפתורים מפעילים את הרשימה שבטלפון המנגן',
       plRepeat: '🔁 חזרה על המדיטציה', plRepeatSub: 'עד שעוצרים', plGapNotif: 'הפסקה קצרה',
       plAgain: '🔁 עוד רגע מתחילים שוב',
+      // v0.16 own-voice recording (first person: the user reads the sentence exactly as shown)
+      recTitle: 'הקלטה אישית', recMic: (x) => 'הקלטה אישית: ' + x, recBadge: 'מוקלט', recDel: 'מחיקת ההקלטה', recDelSure: 'למחוק את ההקלטה?',
+      recHint: 'קראו בקול את המשפט, בדיוק כפי שהוא כתוב', recStart: 'התחלת הקלטה', recStop: 'עצירת ההקלטה',
+      recAsking: 'מבקשים גישה למיקרופון…', recLive: 'מקליטים… ההקלטה תיעצר לבד אחרי שתיקה קצרה', recProc: 'מעבדים את ההקלטה…',
+      recPlay: '▶ השמעה', recPlayStop: '■ עצירה', recSave: 'שמירה', recAgain: 'הקלטה מחדש', recCancel: 'ביטול',
+      recDur: (s) => `אורך ההקלטה: ${s} שנ׳`, recPrivacy: 'ההקלטה נשמרת רק בטלפון הזה',
+      recDenied: 'אין גישה למיקרופון. כדי להקליט צריך לאשר גישה למיקרופון — בטלפון: הגדרות ← אפליקציות ← שקט ← הרשאות; בדפדפן: סמל המנעול שליד הכתובת.',
+      recNoMic: 'לא נמצא מיקרופון במכשיר הזה', recBusy: 'המיקרופון תפוס כרגע (אולי בשיחה או באפליקציה אחרת) — נסו שוב',
+      recUnsup: 'במכשיר או בדפדפן הזה אי אפשר להקליט', recNoSpeech: 'לא נשמע דיבור — נסו שוב, קרוב יותר לטלפון',
+      recFail: 'ההקלטה לא הצליחה — נסו שוב', recStopped: 'ההקלטה נעצרה כי הצליל התחיל לנגן',
+      recNoStore: 'בטלפון הזה אי אפשר לשמור הקלטות (האחסון חסום או לא זמין) — אפשר רק להקליט ולהאזין',
+      recQuota: 'אין מספיק מקום בטלפון כדי לשמור את ההקלטה', recSaveFail: 'השמירה לא הצליחה — נסו שוב',
       // voice.<id>: none in Hebrew -> the VOICES registry name is used
     },
     ru: {
@@ -183,6 +201,17 @@
       plDone: 'Плейлист закончился', plMirrorNote: 'Кнопки запускают плейлист на телефоне-плеере',
       plRepeat: '🔁 Повторять медитацию', plRepeatSub: 'пока не остановите', plGapNotif: 'Короткая пауза',
       plAgain: '🔁 Скоро начнём снова',
+      recTitle: 'Запись своим голосом', recMic: (x) => 'Записать своим голосом: ' + x, recBadge: 'Записано', recDel: 'Удалить запись', recDelSure: 'Удалить запись?',
+      recHint: 'Прочитайте фразу вслух — точно так, как она написана', recStart: 'Начать запись', recStop: 'Остановить запись',
+      recAsking: 'Запрашиваем доступ к микрофону…', recLive: 'Идёт запись… она остановится сама после короткой паузы', recProc: 'Обрабатываем запись…',
+      recPlay: '▶ Прослушать', recPlayStop: '■ Стоп', recSave: 'Сохранить', recAgain: 'Записать заново', recCancel: 'Отмена',
+      recDur: (s) => `Длина записи: ${s} с`, recPrivacy: 'Запись хранится только на этом телефоне',
+      recDenied: 'Нет доступа к микрофону. Чтобы записывать, разрешите доступ к микрофону — в телефоне: Настройки → Приложения → Тишина → Разрешения; в браузере: значок замка у адреса.',
+      recNoMic: 'Микрофон не найден', recBusy: 'Микрофон сейчас занят (например, звонком или другим приложением) — попробуйте ещё раз',
+      recUnsup: 'На этом устройстве или в этом браузере запись недоступна', recNoSpeech: 'Не слышно речи — попробуйте ещё раз, ближе к телефону',
+      recFail: 'Запись не удалась — попробуйте ещё раз', recStopped: 'Запись остановлена: снова зазвучал звук',
+      recNoStore: 'На этом телефоне нельзя сохранять записи (хранилище недоступно) — можно только записать и прослушать',
+      recQuota: 'Недостаточно места на телефоне, чтобы сохранить запись', recSaveFail: 'Не удалось сохранить — попробуйте ещё раз',
     },
   };
   // v0.9: the UI is always Hebrew (user feedback: "only the meditations in Russian"). The ru table stays for a
@@ -1374,6 +1403,7 @@
   }
 
   function play() {
+    if (rec.ui || rec.resume) recOnPlay(); // v0.16: the mic never runs while the app plays (a tap / remote play wins)
     if (!ctx) prepAudio();
     // iOS 17+: explicit playback session (also ignores the silent switch)
     try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* noop */ }
@@ -1523,6 +1553,7 @@
     lent: null, // v0.13.1: the chosen voice while another one plays this session (it has no clips for it)
     startedAt: 0, fromSleep: -1, // v0.15: wall-clock start (quick-end guard) · token of a session sleep mode started
     cut: -1, // v0.15 debug (?debug=1): token of a session marked finished by __shaket.pl.end() (headless clocks are frozen)
+    srcLog: [], // v0.16 debug: per segment of the current session, what played ({i, src, text, dur})
   };
   // v0.13: seg.priv = a private APK-only clip under voice-private/ (never on the site, never fetched remotely)
   const segUrl = (voiceId, seg) => `${seg.priv ? 'voice-private' : 'voice'}/${voiceId}/${seg.file}`;
@@ -1605,7 +1636,7 @@
     const cache = await openCache();
     if (!cache) return;
     for (const sg of s.segments) {
-      let seg = sg; while (seg && (seg.priv || seg.tts)) seg = seg.alt; // v0.13: private / phone-voice lines never come from the site
+      let seg = sg; while (seg && (seg.priv || seg.tts || seg.rec)) seg = seg.alt; // private / phone-voice / own-voice (v0.16) lines never come from the site
       if (!seg) continue;
       const url = REMOTE_BASE + segUrl(voiceId, seg);
       try {
@@ -1624,18 +1655,23 @@
   // v0.13.1: when no link works, the segment is never skipped at zero length (that raced a broken session to its end
   // in a second): it resolves to { tts, fb } — spoken by the phone's voice, else shown as a caption for its planned
   // length — and the failure (file + reasons) goes to the diag log.
+  // v0.16: a link with `rec` is the user's own recording (IndexedDB key) — first in an affirmation's chain.
+  // seg.src = what really plays: 'rec' | 'file' | 'priv' | 'tts' | 'fb' (failed: phone voice / caption).
   const TTS_SEG = { tts: true };
   async function loadSeg(voiceId, seg, lang, planned) {
     const why = [];
     for (let s = seg; s; s = s.alt) {
       let b = null;
-      if (s.tts) { if (s.needTts && !ttsAvailable(s.lang)) { why.push('no phone voice ' + s.lang); continue; } b = TTS_SEG; }
+      if (s.rec) b = await loadRec(s.rec, why);
+      else if (s.tts) { if (s.needTts && !ttsAvailable(s.lang)) { why.push('no phone voice ' + s.lang); continue; } b = TTS_SEG; }
       else b = await loadClip(voiceId, s, why);
       if (!b) continue;
       if (s !== seg) { seg.text = s.text; seg.tts = !!s.tts; seg.lang = s.lang; seg.used = s; }
+      seg.src = s.rec ? 'rec' : s.tts ? 'tts' : s.priv ? 'priv' : 'file';
       return b;
     }
-    const files = []; for (let s = seg; s; s = s.alt) if (!s.tts) files.push(segUrl(voiceId, s));
+    seg.src = 'fb';
+    const files = []; for (let s = seg; s; s = s.alt) if (s.rec) files.push('own recording'); else if (!s.tts) files.push(segUrl(voiceId, s));
     voiceDiag(`seg fail ${files.join(' > ') || '(tts)'}: ${why.join('; ') || '?'}`);
     return { tts: true, fb: { text: seg.text || '', lang: seg.lang || lang, est: planned || seg.est || estSec(seg.text || '') } };
   }
@@ -1661,6 +1697,7 @@
     for (let i = 0; i < list.length; i++) {
       const b = await pending;
       if (!live()) return;
+      voice.srcLog.push({ i, src: list[i].src, text: list[i].text, dur: b && !b.tts ? Math.round(b.duration * 1000) / 1000 : null }); // v0.16 (?debug=1)
       const pauseAfter = list[i].pauseAfterSec || 0, last = i === list.length - 1;
       t = Math.max(t, ctx.currentTime + 0.9);
       const start = t;
@@ -1730,7 +1767,7 @@
     if (!has(voice.id, s.id)) return false;
     if (!state.playing) play(); // still inside the tap
     stopVoice();
-    voice.session = s.id;
+    voice.session = s.id; voice.srcLog = [];
     voice.lent = voice.id !== from ? from : null; // handed over: for this session only, shown in the card
     voice.startedAt = Date.now();
     diagLeft = 12;
@@ -1857,8 +1894,13 @@
     items.forEach((e) => {
       const text = affEntryText(e, l, g);
       if (!text) return;
-      const one = (pause) => (e.c != null ? { text, tts: true, lang: l, pauseAfterSec: pause, est: estSec(text) }
-        : { text, file: `aff/${l}-${g}/${e.id}.mp3`, pauseAfterSec: pause, est: estSec(text) });
+      // v0.16: the user's own recording for (active profile, lang, gender, entry) comes first; est = its real length
+      const rk = recKey(e, l, g), m = rec.meta.get(rk);
+      const one = (pause) => {
+        const base = e.c != null ? { text, tts: true, lang: l, pauseAfterSec: pause, est: estSec(text) }
+          : { text, file: `aff/${l}-${g}/${e.id}.mp3`, pauseAfterSec: pause, est: estSec(text) };
+        return m ? { text, rec: rk, lang: l, pauseAfterSec: pause, est: m.dur, alt: base } : base;
+      };
       if (aff.twice) segs.push(one(AFF_REPEAT_GAP));
       segs.push(one(P));
     });
@@ -1883,6 +1925,410 @@
       if (s) jobs.push(availability(v.id, s.probe).then((ok) => { voice.avail[v.id + '/' + s.id] = ok; }));
     }));
     Promise.all(jobs).then(() => render());
+  }
+
+  // ---------- own-voice recordings (v0.16) ----------
+  // notes/spec-own-recording.txt: the user records an affirmation in their own voice, in the FIRST person — reading the
+  // sentence exactly as shown ("אני בריאה"). Any user of the app can do it for themselves; it never leaves the phone.
+  // Recorder (inline, under a row): getUserMedia -> MediaRecorder (no MediaRecorder: raw PCM via a ScriptProcessor);
+  // a meter AnalyserNode on its own AudioContext; max REC_MAX s; auto-stop REC_SIL s after speech went quiet.
+  // Processing (recProcess, before saving): decode -> one offline render (mono, resampled to REC_SR, 2nd-order
+  // Butterworth high-pass REC_HP Hz) -> trim leading/trailing silence (10 ms frames over an adaptive threshold; bursts
+  // < 80 ms — a tap, a click — dropped; REC_PAD s kept) -> static gain to REC_LUFS integrated (the BS.1770-4 meter
+  // below, the same one that reads the library clips: they sit around −29.6 LUFS for the default voice), capped by a
+  // REC_PEAK dBFS sample-peak guard -> REC_FADE s fades -> 16-bit PCM WAV. The PROCESSED audio is stored (no playback-
+  // time gain): it plays as a plain voice segment through the very same voice path (voiceBus, limiter) as a library clip.
+  // Storage: IndexedDB REC_DB on this phone only; key = profileId|lang|gender|entryId (library id, or a custom sentence's
+  // cid; no profile = '-'). Store 'meta' = small rows (all read at start: badges + the player's lookup), store 'audio' =
+  // {key, wav} (read when a line plays). Never uploaded, never in rcSnap / rcDo (no state key: nothing to mirror).
+  // No IndexedDB (private mode, blocked, failed) / quota: the recorder still records + plays back, and says it can't save.
+  const REC_DB = 'shaket-rec', REC_DB_V = 1, REC_MAX = 20, REC_SIL = 2, REC_PAD = 0.15, REC_FADE = 0.005, REC_HP = 70;
+  const REC_SR = 24000, REC_LUFS = -29, REC_PEAK = -1, REC_GAIN_MAX = 24, REC_GAIN_MIN = -20, REC_MUTE_MS = 160;
+  const rec = { db: null, dbOk: null, meta: new Map(), ui: null, resume: false, muteAt: 0, last: null };
+  const DEBUG = !!QS.get('debug');
+  const recPid = () => { const p = profActive(); return p ? p.id : '-'; };
+  const recKey = (e, l, g, pid = recPid()) => [pid, l, g, e.c != null ? e.cid : e.id].join('|');
+  const recCtxSig = () => [recPid(), medLang, affG()].join('|');
+  const sleepMs = (ms) => new Promise((res) => setTimeout(res, ms));
+  const idbReq = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const idbTx = (stores, fn) => new Promise((res, rej) => {
+    let tx;
+    try { tx = rec.db.transaction(stores, 'readwrite'); fn(tx); } catch (e) { rej(e); return; }
+    tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error || new DOMException('aborted', 'AbortError'));
+  });
+  function recDbOpen() {
+    return new Promise((res) => {
+      let done = false;
+      const fin = (db) => { if (done) { if (db) db.close(); return; } done = true; res(db); };
+      setTimeout(() => fin(null), 4000); // a blocked / hung open never holds the UI
+      try {
+        if (DEBUG && QS.get('recdb') === 'fail') throw new DOMException('debug: IndexedDB disabled', 'SecurityError');
+        const req = window.indexedDB.open(REC_DB, REC_DB_V);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'key' });
+          if (!db.objectStoreNames.contains('audio')) db.createObjectStore('audio', { keyPath: 'key' });
+        };
+        req.onsuccess = () => fin(req.result);
+        req.onerror = () => fin(null);
+      } catch (e) { fin(null); } // no indexedDB at all / SecurityError (blocked storage)
+    });
+  }
+  async function recInit() {
+    const db = await recDbOpen();
+    if (!db) { rec.dbOk = false; return; }
+    try {
+      const rows = await idbReq(db.transaction('meta', 'readonly').objectStore('meta').getAll());
+      (rows || []).forEach((m) => { if (m && typeof m.key === 'string' && m.dur > 0) rec.meta.set(m.key, m); });
+      rec.db = db; rec.dbOk = true;
+      db.onversionchange = () => { db.close(); rec.db = null; rec.dbOk = false; };
+    } catch (e) { try { db.close(); } catch (er) { /* noop */ } rec.dbOk = false; }
+  }
+  function recPut(m, wav) {
+    if (!rec.db) return Promise.reject(new DOMException('no database', 'InvalidStateError'));
+    if (DEBUG && QS.get('recdb') === 'quota') return Promise.reject(new DOMException('debug: quota', 'QuotaExceededError'));
+    return idbTx(['meta', 'audio'], (tx) => { tx.objectStore('audio').put({ key: m.key, wav }); tx.objectStore('meta').put(m); });
+  }
+  // delete recordings (both stores, one transaction); the in-memory index follows only what really went
+  async function recDel(keys) {
+    keys = keys.filter((k) => rec.meta.has(k));
+    if (!keys.length || !rec.db) return false;
+    try {
+      await idbTx(['meta', 'audio'], (tx) => keys.forEach((k) => { tx.objectStore('meta').delete(k); tx.objectStore('audio').delete(k); }));
+      keys.forEach((k) => rec.meta.delete(k));
+      return true;
+    } catch (e) { return false; }
+  }
+  // orphans: a deleted profile's recordings, a removed own sentence's recordings (its cid never comes back)
+  function recPurge(pred) {
+    const keys = [...rec.meta.keys()].filter((k) => pred(k.split('|')));
+    if (keys.length) recDel(keys).then((ok) => { if (ok) { uiAff.sig = ''; render(); } });
+  }
+  async function loadRec(key, why = []) {
+    try {
+      if (!rec.db) { why.push('rec: no database'); return null; }
+      const r = await idbReq(rec.db.transaction('audio', 'readonly').objectStore('audio').get(key));
+      if (!r || !r.wav || !r.wav.byteLength) { why.push('rec missing'); return null; }
+      return await new Promise((res, rej) => { const p = ctx.decodeAudioData(r.wav.slice(0), res, rej); if (p && p.catch) p.catch(rej); });
+    } catch (e) { why.push('rec ' + ((e && (e.name || e.message)) || e)); return null; }
+  }
+
+  // BS.1770-4 integrated loudness of a mono signal: K-weighting (pre-filter shelf + RLB high-pass, coefficients for any
+  // sample rate as in libebur128), 400 ms blocks with 75 % overlap, −70 LUFS absolute + −10 LU relative gate.
+  function lufsOf(x, sr) {
+    const biq = (b, a) => { let x1 = 0, x2 = 0, y1 = 0, y2 = 0; return (v) => { const y = b[0] * v + b[1] * x1 + b[2] * x2 - a[1] * y1 - a[2] * y2; x2 = x1; x1 = v; y2 = y1; y1 = y; return y; }; };
+    let f0 = 1681.974450955533, Q = 0.7071752369554196, K = Math.tan(Math.PI * f0 / sr);
+    const Vh = Math.pow(10, 3.999843853973347 / 20), Vb = Math.pow(Vh, 0.4996667741545416), a0 = 1 + K / Q + K * K;
+    const pre = biq([(Vh + Vb * K / Q + K * K) / a0, 2 * (K * K - Vh) / a0, (Vh - Vb * K / Q + K * K) / a0], [1, 2 * (K * K - 1) / a0, (1 - K / Q + K * K) / a0]);
+    f0 = 38.13547087602444; Q = 0.5003270373238773; K = Math.tan(Math.PI * f0 / sr);
+    const a1 = 1 + K / Q + K * K, rlb = biq([1, -2, 1], [1, 2 * (K * K - 1) / a1, (1 - K / Q + K * K) / a1]);
+    const n = x.length, sq = new Float64Array(n + 1); // prefix sums of the K-weighted power
+    for (let i = 0; i < n; i++) { const y = rlb(pre(x[i])); sq[i + 1] = sq[i] + y * y; }
+    const bl = Math.round(0.4 * sr), hop = Math.round(0.1 * sr), z = [];
+    if (n < bl) { if (n) z.push(sq[n] / n); } else for (let s = 0; s + bl <= n; s += hop) z.push((sq[s + bl] - sq[s]) / bl);
+    const L = (p) => -0.691 + 10 * Math.log10(p), mean = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+    const abs = z.filter((p) => p > 0 && L(p) > -70);
+    if (!abs.length) return -Infinity;
+    const rel = L(mean(abs)) - 10, g = abs.filter((p) => L(p) > rel);
+    return L(mean(g.length ? g : abs));
+  }
+  function wavOf(y, sr) { // 16-bit PCM mono
+    const n = y.length, b = new ArrayBuffer(44 + n * 2), v = new DataView(b);
+    const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    w(36, 'data'); v.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) { const s = Math.max(-1, Math.min(1, y[i])); v.setInt16(44 + i * 2, Math.round(s < 0 ? s * 0x8000 : s * 0x7fff), true); }
+    return b;
+  }
+  const r1 = (v) => Math.round(v * 10) / 10;
+  // ab: the decoded recording. manual: stopped by a tap (its last 120 ms may hold the tap itself).
+  async function recProcess(ab, manual) {
+    const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!OAC) throw new Error('no OfflineAudioContext');
+    let sr = REC_SR, oc;
+    try { oc = new OAC(1, Math.max(1, Math.ceil(ab.duration * sr)), sr); } catch (e) { sr = ab.sampleRate; oc = new OAC(1, ab.length, sr); }
+    const src = oc.createBufferSource(), hp = filtIn(oc, 'highpass', REC_HP, Math.SQRT1_2);
+    src.buffer = ab; src.connect(hp); hp.connect(oc.destination); src.start(0); // 1-channel destination: down-mixed to mono
+    const out = await new Promise((res, rej) => { oc.oncomplete = (e) => res(e.renderedBuffer); const p = oc.startRendering(); if (p && p.then) p.then(res, rej); });
+    let x = out.getChannelData(0);
+    if (manual) x = x.subarray(0, Math.max(0, x.length - Math.round(0.12 * sr)));
+    // trim: 10 ms frames in dB; threshold = max(noise floor + 10, loudest − 40, −65 dBFS)
+    const fr = Math.max(1, Math.round(sr * 0.01)), nf = Math.floor(x.length / fr), db = new Float32Array(nf);
+    for (let f = 0; f < nf; f++) { let s = 0; for (let i = f * fr, e = i + fr; i < e; i++) s += x[i] * x[i]; db[f] = 10 * Math.log10(s / fr + 1e-12); }
+    if (nf < 10) return { err: 'short' };
+    const sorted = Array.from(db).sort((a, b) => a - b), floor = sorted[Math.floor(nf * 0.05)], top = sorted[nf - 1];
+    const thr = Math.max(floor + 10, top - 40, -65);
+    const runs = []; let cur = null; // active frames, merged across gaps < 250 ms
+    for (let f = 0; f < nf; f++) if (db[f] > thr) { if (cur && f - cur[1] <= 25) cur[1] = f; else runs.push(cur = [f, f]); }
+    const keep = runs.filter((r) => r[1] - r[0] + 1 >= 8); // < 80 ms: a tap / click, not speech
+    if (!keep.length || keep.reduce((a, r) => a + r[1] - r[0] + 1, 0) < 20) return { err: 'nospeech' };
+    const pad = Math.round(REC_PAD * sr);
+    const a = Math.max(0, keep[0][0] * fr - pad), b = Math.min(x.length, (keep[keep.length - 1][1] + 1) * fr + pad);
+    const y = x.slice(a, b);
+    let peak = 0; for (let i = 0; i < y.length; i++) { const v = Math.abs(y[i]); if (v > peak) peak = v; }
+    const lin = lufsOf(y, sr), peakDb = 20 * Math.log10(peak || 1e-9);
+    let gDb = isFinite(lin) ? REC_LUFS - lin : 0;
+    gDb = Math.min(Math.min(REC_GAIN_MAX, Math.max(REC_GAIN_MIN, gDb)), REC_PEAK - peakDb); // peak guard last
+    const gl = Math.pow(10, gDb / 20), nfd = Math.max(1, Math.round(REC_FADE * sr)), n = y.length;
+    for (let i = 0; i < n; i++) y[i] *= gl * Math.min(1, i / nfd, (n - 1 - i) / nfd);
+    return { y, sr, dur: n / sr, wav: wavOf(y, sr), lufsIn: r1(lin), lufsOut: r1(lufsOf(y, sr)), gainDb: r1(gDb), peakDb: r1(peakDb + gDb),
+      trim: [Math.round(a / sr * 1000) / 1000, Math.round(b / sr * 1000) / 1000], srcDur: Math.round(ab.duration * 1000) / 1000, thr: r1(thr), floor: r1(floor) };
+  }
+  function filtIn(c, type, freq, q) { const f = c.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q; return f; }
+  const decodeAny = (bytes) => {
+    const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    const dc = ctx || new OAC(1, 1, 44100);
+    return new Promise((res, rej) => { const p = dc.decodeAudioData(bytes, res, rej); if (p && p.catch) p.catch(rej); });
+  };
+  const recMime = () => {
+    if (typeof MediaRecorder === 'undefined') return null;
+    for (const m of ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/webm']) {
+      try { if (MediaRecorder.isTypeSupported(m)) return m; } catch (e) { /* noop */ }
+    }
+    return ''; // the browser's default container
+  };
+
+  // ---- recorder UI (one at a time; the panel lives inside its row and survives list rebuilds) ----
+  // u.st: 'idle' | 'ask' (waiting for the mic) | 'live' | 'proc' | 'review' | 'err'
+  function recOpen(e, rowKey) {
+    if (rec.ui && rec.ui.rowKey === rowKey) { recClose(); return; } // 🎙 again: close it
+    recClose(true);
+    const l = medLang, g = affG();
+    const u = rec.ui = { rowKey, key: recKey(e, l, g), sig: recCtxSig(), lang: l, g, eid: e.c != null ? e.cid : e.id,
+      text: affEntryText(e, l, g), st: 'idle', msg: '', result: null, cap: null, audio: null, url: null, saving: false };
+    u.panel = recPanel(u);
+    uiAff.sig = ''; render(); // the row gets the panel (renderAff) + its 🎙 shows "open"
+    recPaint(u);
+    try { u.els.big.focus({ preventScroll: true }); } catch (er) { /* noop */ }
+  }
+  function recPanel(u) {
+    const p = el('div', 'rec'); p.setAttribute('role', 'group'); p.setAttribute('aria-label', t('recTitle'));
+    const hint = el('p', 'rec-hint'); hint.textContent = t('recHint');
+    const main = el('div', 'rec-main');
+    const big = el('button', 'rec-btn'); big.type = 'button'; big.append(el('span', 'rec-ico'));
+    big.addEventListener('click', () => { if (u.st === 'live') recStopCap(u, u.cap, true); else recStart(u); });
+    const live = el('div', 'rec-live'), meter = el('div', 'rec-meter'), fill = el('i'), time = el('span', 'rec-time');
+    meter.setAttribute('aria-hidden', 'true'); meter.append(fill); time.dir = 'ltr';
+    live.append(meter, time); main.append(big, live);
+    const msg = el('p', 'rec-msg'); msg.setAttribute('role', 'status'); msg.setAttribute('aria-live', 'polite');
+    const acts = el('div', 'rec-acts');
+    const mk = (cls, fn) => { const b = el('button', 'chip ' + cls); b.type = 'button'; b.addEventListener('click', fn); acts.append(b); return b; };
+    u.els = { p, big, live, meter, fill, time, msg,
+      play: mk('rec-play', () => recPreview(u)), save: mk('rec-save', () => recSave(u)),
+      again: mk('rec-again', () => recStart(u)), cancel: mk('rec-cancel', () => recClose()) };
+    p.append(hint, main, msg, acts);
+    return p;
+  }
+  function recPaint(u) {
+    const E = u.els, st = u.st, live = st === 'live', review = st === 'review';
+    if (!E) return;
+    E.p.dataset.st = st;
+    E.big.hidden = review;
+    E.big.disabled = st === 'ask' || st === 'proc';
+    E.big.setAttribute('aria-label', live ? t('recStop') : t('recStart'));
+    E.big.setAttribute('aria-pressed', String(live));
+    E.meter.hidden = !live;
+    E.live.hidden = !(live || review);
+    if (review) setText(E.time, t('recDur', (Math.round(u.result.dur * 10) / 10).toLocaleString('he')));
+    if (review) E.time.removeAttribute('dir'); else E.time.dir = 'ltr';
+    const noStore = rec.dbOk === false;
+    const m = st === 'ask' ? t('recAsking') : live ? t('recLive') : st === 'proc' ? t('recProc') : st === 'err' ? t(u.msg)
+      : review ? (u.msg ? t(u.msg) : noStore ? t('recNoStore') : t('recPrivacy')) : noStore ? t('recNoStore') : '';
+    setText(E.msg, m); E.msg.hidden = !m;
+    E.msg.classList.toggle('warn', st === 'err' || (review && !!u.msg) || (noStore && !live && st !== 'ask' && st !== 'proc'));
+    E.play.hidden = !review; setText(E.play, u.audio ? t('recPlayStop') : t('recPlay'));
+    E.play.setAttribute('aria-pressed', String(!!u.audio));
+    E.save.hidden = !review; setText(E.save, t('recSave'));
+    E.save.disabled = noStore || u.saving;
+    E.again.hidden = !(review || st === 'err'); setText(E.again, t('recAgain'));
+    E.again.disabled = u.saving;
+    setText(E.cancel, t('recCancel'));
+  }
+  const recSetSt = (u, st, msg) => { if (rec.ui !== u) return; u.st = st; u.msg = msg || ''; recPaint(u); };
+  // the app's own sound must not end up in the recording: pause it at once (a 120 ms fade, not the usual 3 s) and
+  // remember to bring it back when the recorder closes. A mirroring controller is silent itself: nothing to pause.
+  function recPauseApp() {
+    if (!state.playing || rcMirror()) return;
+    rec.resume = true;
+    pause();
+    if (ctx) { const t0 = ctx.currentTime; outGains().forEach((g) => { g.cancelScheduledValues(t0); g.setValueAtTime(g.value, t0); g.linearRampToValueAtTime(0, t0 + 0.12); }); }
+    rec.muteAt = Date.now();
+  }
+  async function recStart(u) {
+    if (rec.ui !== u || u.st === 'ask' || u.st === 'live' || u.st === 'proc' || u.saving) return;
+    recPreviewStop(u);
+    u.result = null;
+    const md = navigator.mediaDevices, AC = window.AudioContext || window.webkitAudioContext;
+    if (!md || typeof md.getUserMedia !== 'function' || !AC) { recSetSt(u, 'err', 'recUnsup'); return; }
+    recPauseApp();
+    let ac = null;
+    try { ac = new AC(); } catch (e) { ac = null; } // for the meter; made inside the tap (autoplay policies)
+    recSetSt(u, 'ask');
+    let stream = null;
+    try {
+      stream = await md.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+    } catch (e) {
+      if (ac) ac.close().catch(() => {});
+      const n = (e && e.name) || '';
+      recSetSt(u, 'err', /NotAllowed|Security|PermissionDenied/.test(n) ? 'recDenied' : /NotReadable|TrackStart|Abort/.test(n) ? 'recBusy'
+        : /NotFound|DevicesNotFound|Overconstrained/.test(n) ? 'recNoMic' : 'recUnsup');
+      return;
+    }
+    const drop = () => { stream.getTracks().forEach((tr) => { try { tr.stop(); } catch (er) { /* noop */ } }); if (ac) ac.close().catch(() => {}); };
+    if (rec.ui !== u || u.st !== 'ask') { drop(); return; } // closed, or the app started playing meanwhile
+    const wait = REC_MUTE_MS - (Date.now() - rec.muteAt);
+    if (wait > 0) await sleepMs(wait); // the app's fade-out must be over before the first sample
+    if (rec.ui !== u || u.st !== 'ask') { drop(); return; }
+    const cap = u.cap = { stream, ac, chunks: [], pcm: [], t0: Date.now(), speech: false, loudMs: 0, quietMs: 0, floor: null, mr: null, sp: null,
+      mime: '', done: false, stopping: false, cancel: false, manual: false, iv: 0 };
+    try {
+      if (ac) { if (ac.state !== 'running') ac.resume().catch(() => {}); cap.src = ac.createMediaStreamSource(stream); cap.an = ac.createAnalyser(); cap.an.fftSize = 2048; cap.src.connect(cap.an); }
+      const mime = recMime();
+      if (mime !== null) {
+        const mr = cap.mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+        cap.mime = mr.mimeType || mime;
+        mr.ondataavailable = (ev) => { if (ev.data && ev.data.size) cap.chunks.push(ev.data); };
+        mr.onstop = () => recCaptured(u, cap);
+        mr.start(250);
+      } else if (cap.src && ac.createScriptProcessor) { // no MediaRecorder (old Safari): collect the PCM itself
+        const sp = cap.sp = ac.createScriptProcessor(4096, 1, 1), mute = ac.createGain(); mute.gain.value = 0;
+        sp.onaudioprocess = (ev) => { if (!cap.done && !cap.stopping) cap.pcm.push(new Float32Array(ev.inputBuffer.getChannelData(0))); };
+        cap.src.connect(sp); sp.connect(mute); mute.connect(ac.destination);
+      } else throw new Error('no recorder');
+    } catch (e) { recRelease(cap); u.cap = null; recSetSt(u, 'err', 'recUnsup'); return; }
+    recSetSt(u, 'live');
+    cap.iv = setInterval(() => recTick(u, cap), 50);
+    recTick(u, cap);
+  }
+  // meter + timer + auto-stop (speech = ≥ 150 ms above max(floor + 12, −50) dBFS; then REC_SIL s below it ends it)
+  function recTick(u, cap) {
+    if (rec.ui !== u || cap.done || cap.stopping) return;
+    const sec = (Date.now() - cap.t0) / 1000;
+    let lv = -100;
+    if (cap.an) {
+      const a = cap.buf || (cap.buf = new Float32Array(cap.an.fftSize));
+      cap.an.getFloatTimeDomainData(a);
+      let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * a[i];
+      lv = 10 * Math.log10(s / a.length + 1e-12);
+    }
+    cap.floor = cap.floor == null ? lv : Math.min(lv, cap.floor + 0.1); // the quietest level, creeping up 2 dB/s
+    const loud = lv > Math.max(cap.floor + 12, -50);
+    cap.loudMs = loud ? cap.loudMs + 50 : 0;
+    if (cap.loudMs >= 150) cap.speech = true;
+    cap.quietMs = loud ? 0 : cap.quietMs + 50;
+    const E = u.els, f = Math.max(0, Math.min(1, (lv + 60) / 54));
+    E.fill.style.transform = `scaleX(${Math.round(f * 100) / 100})`;
+    E.meter.classList.toggle('on', loud);
+    setText(E.time, fmt(Math.min(REC_MAX, sec) * 1000) + ' / ' + fmt(REC_MAX * 1000));
+    if (sec >= REC_MAX || (cap.speech && cap.quietMs >= REC_SIL * 1000)) recStopCap(u, cap, false);
+  }
+  function recStopCap(u, cap, manual) {
+    if (!cap || cap.stopping || cap.done) return;
+    cap.stopping = true; cap.manual = manual; clearInterval(cap.iv);
+    recSetSt(u, 'proc');
+    if (cap.mr && cap.mr.state !== 'inactive') { try { cap.mr.stop(); return; } catch (e) { /* fall through */ } } // -> onstop
+    recCaptured(u, cap);
+  }
+  function recRelease(cap) {
+    if (!cap) return;
+    clearInterval(cap.iv);
+    try { if (cap.mr && cap.mr.state !== 'inactive') cap.mr.stop(); } catch (e) { /* noop */ }
+    try { cap.stream.getTracks().forEach((tr) => tr.stop()); } catch (e) { /* noop */ } // the OS mic indicator goes off
+    try { if (cap.sp) { cap.sp.onaudioprocess = null; cap.sp.disconnect(); } if (cap.src) cap.src.disconnect(); } catch (e) { /* noop */ }
+    if (cap.ac && cap.ac.state !== 'closed') cap.ac.close().catch(() => {});
+  }
+  // the mic is closed and the recording is thrown away (cancel / the app started playing)
+  function recAbortCap(u) {
+    const cap = u && u.cap;
+    if (!cap) return;
+    u.cap = null;
+    if (!cap.done) { cap.cancel = true; cap.done = true; recRelease(cap); }
+  }
+  async function recCaptured(u, cap) {
+    if (cap.done) return;
+    cap.done = true;
+    const sr0 = cap.ac ? cap.ac.sampleRate : 48000;
+    recRelease(cap);
+    if (u.cap === cap) u.cap = null;
+    if (rec.ui !== u || cap.cancel) return;
+    try {
+      let ab;
+      if (cap.mr) {
+        const bytes = await new Response(new Blob(cap.chunks, { type: cap.mime || 'audio/webm' })).arrayBuffer();
+        ab = await decodeAny(bytes);
+      } else {
+        const n = cap.pcm.reduce((a, c) => a + c.length, 0);
+        if (!n) throw new Error('empty');
+        const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+        ab = (ctx || new OAC(1, 1, sr0)).createBuffer(1, n, sr0);
+        let o = 0; const d = ab.getChannelData(0); cap.pcm.forEach((c) => { d.set(c, o); o += c.length; });
+      }
+      const r = await recProcess(ab, cap.manual);
+      if (rec.ui !== u) return;
+      if (r.err) { recSetSt(u, 'err', 'recNoSpeech'); return; }
+      u.result = r;
+      rec.last = { key: u.key, mime: cap.mime || 'pcm', srcDur: r.srcDur, dur: r.dur, sr: r.sr, trim: r.trim, lufsIn: r.lufsIn, lufsOut: r.lufsOut, gainDb: r.gainDb, peakDb: r.peakDb, thr: r.thr, floor: r.floor, auto: !cap.manual };
+      recSetSt(u, 'review');
+    } catch (e) { if (rec.ui === u) recSetSt(u, 'err', 'recFail'); if (DEBUG) console.warn('[rec]', e); }
+  }
+  function recPreview(u) {
+    if (u.audio) { recPreviewStop(u); recPaint(u); return; }
+    if (!u.result) return;
+    try {
+      u.url = URL.createObjectURL(new Blob([u.result.wav], { type: 'audio/wav' }));
+      const a = u.audio = new Audio(u.url);
+      a.setAttribute('playsinline', '');
+      a.onended = () => { if (u.audio === a) { recPreviewStop(u); recPaint(u); } };
+      const p = a.play(); if (p && p.catch) p.catch(() => { if (u.audio === a) { recPreviewStop(u); recPaint(u); } });
+    } catch (e) { recPreviewStop(u); }
+    recPaint(u);
+  }
+  function recPreviewStop(u) {
+    if (!u) return;
+    const a = u.audio; u.audio = null;
+    if (a) { try { a.pause(); a.removeAttribute('src'); a.load(); } catch (e) { /* noop */ } }
+    if (u.url) { URL.revokeObjectURL(u.url); u.url = null; }
+  }
+  async function recSave(u) {
+    if (rec.ui !== u || !u.result || u.saving) return;
+    recPreviewStop(u);
+    u.saving = true; u.msg = ''; recPaint(u);
+    const r = u.result, [pid, lang, g] = u.key.split('|');
+    const m = { key: u.key, v: 1, pid, lang, g, eid: u.eid, text: u.text, dur: Math.round(r.dur * 1000) / 1000, sr: r.sr,
+      lufs: r.lufsOut, gainDb: r.gainDb, peakDb: r.peakDb, at: Date.now() };
+    try {
+      await recPut(m, r.wav);
+      rec.meta.set(m.key, m);
+      u.saving = false;
+      if (rec.ui === u) recClose();
+    } catch (e) {
+      u.saving = false;
+      if (rec.ui !== u) return;
+      u.msg = e && (e.name === 'QuotaExceededError' || e.code === 22) ? 'recQuota' : rec.db ? 'recSaveFail' : 'recNoStore';
+      recPaint(u);
+    }
+  }
+  // close the recorder (cancel / after saving / its row went away); the app's sound comes back if the recorder paused it
+  function recClose(noRender) {
+    const u = rec.ui;
+    if (!u) return;
+    rec.ui = null;
+    recAbortCap(u); recPreviewStop(u);
+    if (u.panel) u.panel.remove();
+    const resume = rec.resume; rec.resume = false;
+    if (resume && !state.playing && !rcMirror()) play(); // (inside the tap that closed it)
+    if (!noRender) { uiAff.sig = ''; render(); }
+  }
+  // play() was asked for (a tap, a remote command, a playlist step): a live mic stops, the sound wins; no auto-resume
+  function recOnPlay() {
+    rec.resume = false;
+    const u = rec.ui;
+    if (u && (u.st === 'ask' || u.st === 'live' || (u.st === 'proc' && u.cap))) { recAbortCap(u); recSetSt(u, 'err', 'recStopped'); }
+  }
+  async function recDeleteOne(key) {
+    if (await recDel([key])) { uiAff.sig = ''; render(); }
   }
 
   // ---------- playlist + loop (v0.15) ----------
@@ -2510,14 +2956,21 @@
     rcDo('profiles', v);
   }
   function profSet(v) {
-    const g0 = affG();
+    const g0 = affG(), gone = new Set(profs.list.map((p) => p.id).filter((id) => !v.list.some((p) => p.id === id)));
+    if (gone.size) recPurge((k) => gone.has(k[0])); // v0.16: a deleted user's recordings are deleted too
     profs.list = v.list.map((p) => ({ id: p.id, name: p.name, g: p.g, key: p.key && aff.names && aff.names[p.key] ? p.key : null }));
     profs.active = v.active;
     profSave();
     if (affG() !== g0) affRecheck(); // other gender = other clip folder
     render();
   }
-  function affSetList(v) { aff.list = v.map((e) => Object.assign({}, e)); affSave(); render(); }
+  function affSetList(v) {
+    const kept = new Set(v.filter((e) => e.c != null).map((e) => e.cid));
+    const gone = new Set(aff.list.filter((e) => e.c != null && !kept.has(e.cid)).map((e) => e.cid));
+    aff.list = v.map((e) => Object.assign({}, e)); affSave();
+    if (gone.size) recPurge((k) => gone.has(k[3])); // v0.16: a removed own sentence's recordings go with it (its cid never returns)
+    render();
+  }
   function affVisIdx() { const r = []; aff.list.forEach((e, i) => { if (affEntryLang(e, medLang)) r.push(i); }); return r; }
   // move the from-th shown entry to the to-th shown position (entries of the other language keep their places)
   function affMove(from, to) {
@@ -2661,7 +3114,10 @@
     const body = el('button', 'aff-body'); body.type = 'button'; body.append(tx);
     body.setAttribute('aria-expanded', String(isSel));
     body.addEventListener('click', () => affSelect(li.dataset.key));
-    if (e.c != null) { const tag = el('span', 'tag'); tag.textContent = t('tagPhone'); body.append(tag); }
+    // v0.16: recorded in the user's own voice (for the active profile, this language + gender) -> "מוקלט"
+    const rk = recKey(e, l, g), recd = rec.meta.has(rk);
+    if (recd) { const tag = el('span', 'tag warm rec-tag'); tag.textContent = t('recBadge'); body.append(tag); }
+    else if (e.c != null) { const tag = el('span', 'tag'); tag.textContent = t('tagPhone'); body.append(tag); }
     const btn = (cls, label, aria, fn, dis) => {
       const b = el('button', 'icon-btn ' + cls); b.type = 'button'; b.textContent = label; b.setAttribute('aria-label', aria);
       b.disabled = !!dis; b.dataset.act = cls;
@@ -2676,7 +3132,23 @@
       btn('rm', '✕', t('affRm', short), () => {
         const key = li.dataset.key; uiAff.focusKey = null; if (uiAff.sel === key) uiAff.sel = null;
         rcDo('affList', aff.list.filter((x) => entryKey(x) !== key));
-      }));
+      }),
+      btn('mic', '🎙', t('recMic', short), () => recOpen(e, li.dataset.key)));
+    const mic = ctrls.lastChild;
+    mic.setAttribute('aria-expanded', String(!!rec.ui && rec.ui.rowKey === li.dataset.key));
+    if (recd) { // v0.16: delete the recording — the first tap arms ("למחוק את ההקלטה?"), the second deletes
+      const d = btn('recdel', t('recDel'), t('recDel') + ': ' + short, () => {
+        clearTimeout(d.armTO);
+        if (!d.classList.contains('armed')) {
+          uiAff.focusKey = null; d.classList.add('armed'); d.textContent = t('recDelSure');
+          d.armTO = setTimeout(() => { d.classList.remove('armed'); d.textContent = t('recDel'); }, 3500);
+          return;
+        }
+        if (rec.ui && rec.ui.key === rk) recClose(true);
+        recDeleteOne(rk);
+      });
+      ctrls.append(d);
+    }
     li.append(h, body, ctrls);
     affDrag(h, li);
     return li;
@@ -2765,13 +3237,19 @@
     if (inp.lang !== l) { inp.lang = l; inp.dir = l === 'ru' ? 'ltr' : 'rtl'; inp.placeholder = l === 'ru' ? 'Например: Я спокойна' : t('affOwnPh'); }
     setText($('#affOwnNote'), ttsOk ? t('affOwnNote') : t('affOwnNoTts'));
     $('#affOwnBtn').disabled = aff.list.length >= AFF_LIST_MAX;
-    const sig = JSON.stringify([aff.list, l, g, uiAff.libOpen]);
+    if (rec.ui && rec.ui.sig !== recCtxSig()) recClose(true); // v0.16: profile / language / gender changed under it
+    const recSig = [recPid(), affEntries(l).map((e) => (rec.meta.has(recKey(e, l, g)) ? 1 : 0)).join(''), rec.ui ? rec.ui.rowKey : ''];
+    const sig = JSON.stringify([aff.list, l, g, uiAff.libOpen, recSig]);
     if (sig === uiAff.sig || uiAff.drag) return; // unchanged, or a drag is in flight (never rebuild under a finger)
     uiAff.sig = sig;
     setText($('#affLangNote'), t('affLangNote', l));
     const vis = affEntries(l), ol = $('#affList');
     ol.textContent = '';
     vis.forEach((e, k) => ol.append(affRow(e, k, vis.length, l, g)));
+    if (rec.ui) { // v0.16: the open recorder moves into its rebuilt row (its state lives on), or closes with the row
+      const row = [...ol.children].find((r) => r.dataset.key === rec.ui.rowKey);
+      if (row) row.append(rec.ui.panel); else recClose(true);
+    }
     $('#affEmpty').hidden = vis.length > 0;
     $('#affLibBtn').setAttribute('aria-expanded', String(uiAff.libOpen));
     $('#affLib').hidden = !uiAff.libOpen;
@@ -3584,6 +4062,29 @@
     end: () => { if (!voice.session) return false; voice.cut = voice.token; return true; },
     unavail: (sid) => { VOICES.forEach((v) => { voice.avail[v.id + '/' + sid] = false; }); render(); },
     clearLog: () => { plLog.length = 0; } };
+  // v0.16 own-voice recording hooks: info() = the stored index + the last processing numbers; srcLog() = what each
+  // segment of the current / last session played; resolve(l) = runs the REAL affBuild + loadSeg chain for the list as it
+  // is now (headless clocks are frozen, so a session never reaches its later lines); lufs(url) = this meter on any clip;
+  // wav(key) = a stored recording as base64 (for an external meter).
+  if (window.__shaket) window.__shaket.rec = {
+    info: () => ({ dbOk: rec.dbOk, keys: [...rec.meta.keys()], meta: [...rec.meta.values()], last: rec.last, open: rec.ui && { key: rec.ui.key, st: rec.ui.st, msg: rec.ui.msg },
+      resume: rec.resume, ctxSig: recCtxSig(), playing: state.playing, ctxState: ctx && ctx.state }),
+    srcLog: () => voice.srcLog.slice(),
+    resolve: async (l = medLang) => {
+      const segs = affBuild(l), out = [];
+      for (let i = 0; i < segs.length; i++) {
+        const sg = segs[i], b = await loadSeg(voice.id, sg, l, sg.est);
+        out.push({ i, src: sg.src, text: sg.text, est: sg.est, dur: b && !b.tts ? Math.round(b.duration * 1000) / 1000 : null });
+      }
+      return out;
+    },
+    lufs: async (url) => { const r = await fetch(url); const b = await decodeAny(await r.arrayBuffer()); return r1(lufsOf(b.getChannelData(0), b.sampleRate)); },
+    lufsKey: async (key) => { const b = await loadRec(key); return b ? { lufs: r1(lufsOf(b.getChannelData(0), b.sampleRate)), dur: b.duration, sr: b.sampleRate } : null; },
+    wav: async (key) => {
+      const r = await idbReq(rec.db.transaction('audio', 'readonly').objectStore('audio').get(key));
+      const u8 = new Uint8Array(r.wav); let bin = ''; for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+      return btoa(bin);
+    } };
   if (window.__shaket) window.__shaket.rc = { info: rcInfo, // v0.12 remote-control test hooks
     setRole: rcSetRole, claim: rcClaim, newCode: rcNewOffer, unpair: rcUnpair, setLocalPlay: rcSetLocalPlay, act: rcDo, room: () => rc.room };
   // v0.11.1: hidden Android diagnostics — a 1.5 s press on the footer opens the wrapper's native diag screen.
@@ -3614,5 +4115,5 @@
     }
   })();
   try { prepAudio(); } catch (e) { ctx = null; } // early, off the tap path; play() retries if this failed
-  Promise.all([loadLocalVoices(), loadAff()]).finally(() => { buildUI(); render(); });
+  Promise.all([loadLocalVoices(), loadAff(), recInit().catch(() => { rec.dbOk = false; })]).finally(() => { buildUI(); render(); });
 })();
