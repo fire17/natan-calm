@@ -1,5 +1,9 @@
 'use strict';
-/* שקט v0.13 — Web Audio meditation app. UI is Hebrew-only (RTL); guided meditations in Hebrew or Russian.
+/* שקט v0.13.1 — Web Audio meditation app. UI is Hebrew-only (RTL); guided meditations in Hebrew or Russian.
+   v0.13.1: a voice clip that fails to load is never skipped at zero length (a broken session used to race to its end):
+   it is spoken by the phone's voice, else captioned for its planned length, and logged (APK: Android.diag). The APK
+   wrapper now 404s missing assets on HEAD too (voice 5 "had" the affirmations, so the hand-over never happened);
+   a handed-over session names its voice in the card, and the chosen voice comes back when the session ends.
    v0.13: "I am" affirmations — personal settings (user profiles: name + gender, pre-recorded name lines from the private
    APK-only voice-private/, else the name line spoken by the phone's voice), a personal, reorderable affirmation list
    (library + own sentences), and a guided 'aff' session per language. Own sentences use the phone's TTS
@@ -93,6 +97,7 @@
       affOwnNoTts: 'בטלפון הזה אין קול להקראה בשפה הזו — המשפט יוצג ככיתוב בזמן ההפסקה',
       affWa: 'שלחו לשירה בוואטסאפ משפטים שתרצו בקול החם', affPause: (n) => `הפסקה אחרי כל משפט · ${n} שנ׳`, sec: (n) => `${n} שניות`,
       affTwice: 'לחזור על כל משפט פעמיים', affLibDone: 'סיום', affDrag: 'גררו כדי לשנות סדר',
+      lentVoice: (n) => 'האפירמציות ב' + n, // + 'קול 1 — רך' -> "בקול 1 — רך"
       affUp: (x) => 'הזזה למעלה: ' + x, affDown: (x) => 'הזזה למטה: ' + x, affRm: (x) => 'הסרה: ' + x,
       'mode.alpha': 'רוגע', 'mode.alpha.sub': 'אלפא · 10Hz',
       'mode.delta': 'שינה', 'mode.delta.sub': 'דלתא · 2.5Hz',
@@ -128,6 +133,7 @@
       'preset.quiet': 'Минута тишины', 'preset.sleep': 'Перед сном', 'preset.sea': 'Море', 'preset.forest': 'Лес под дождём',
       'voice.marin': 'Голос 1 — мягкий', 'voice.shimmer': 'Голос 2 — светлый',
       'voice.sage': 'Голос 3 — спокойный', 'voice.cedar': 'Голос 4 — глубокий',
+      lentVoice: (n) => 'Аффирмации: ' + n,
     },
   };
   // v0.9: the UI is always Hebrew (user feedback: "only the meditations in Russian"). The ru table stays for a
@@ -1375,6 +1381,7 @@
   const voice = {
     id: VOICES.some((v) => v.id === savedVoice) ? savedVoice : DEFAULT_VOICE,
     session: null, token: 0, sources: [], avail: {}, checked: false, caption: '',
+    lent: null, // v0.13.1: the chosen voice while another one plays this session (it has no clips for it)
   };
   // v0.13: seg.priv = a private APK-only clip under voice-private/ (never on the site, never fetched remotely)
   const segUrl = (voiceId, seg) => `${seg.priv ? 'voice-private' : 'voice'}/${voiceId}/${seg.file}`;
@@ -1432,12 +1439,25 @@
       return r;
     } catch (e) { return null; } // offline
   }
-  async function voiceFetch(voiceId, seg) {
+  async function voiceFetch(voiceId, seg, why = []) { // why: failure reasons, for the diag log
     const rel = segUrl(voiceId, seg);
     let r = null;
-    try { r = await fetch(rel); } catch (e) { r = null; }
+    try { r = await fetch(rel); } catch (e) { r = null; why.push('local ' + ((e && e.name) || 'error')); }
     if (isAudio(r)) return r;
-    return canRemote(voiceId) && !seg.priv ? remoteFetch(rel) : null;
+    if (r) why.push('local ' + r.status + (r.ok ? ' html' : ''));
+    if (!canRemote(voiceId) || seg.priv) return null;
+    const rr = await remoteFetch(rel);
+    if (!rr) why.push(navigator.onLine === false ? 'remote offline' : 'remote failed');
+    return rr;
+  }
+  // v0.13.1: every voice-segment failure is logged (APK: the hidden diag screen, 1.5 s press on the footer).
+  // Capped per session, so one broken session can't flush the wrapper's 50-entry ring.
+  let diagLeft = 0;
+  function voiceDiag(msg) {
+    if (QS.get('debug')) console.warn('[voice] ' + msg);
+    if (!ANDROID || diagLeft <= 0) return;
+    diagLeft--;
+    try { if (typeof window.Android.diag === 'function') window.Android.diag(msg); else window.Android.log(msg); } catch (e) { /* old wrapper */ }
   }
   // first remote play: quietly cache the whole session (sequential, small files), so it all works offline next time
   async function cacheSession(voiceId, s) {
@@ -1460,25 +1480,31 @@
   // v0.13: a segment may carry a fallback chain (seg.alt): private name clip -> phone-voice (TTS) line -> plain clip.
   // The first link that works is adopted into the segment itself (text/tts/lang), so captions match what is heard.
   // A TTS link resolves to TTS_SEG (spoken live by runVoice); `needTts` links are skipped when no phone voice exists.
+  // v0.13.1: when no link works, the segment is never skipped at zero length (that raced a broken session to its end
+  // in a second): it resolves to { tts, fb } — spoken by the phone's voice, else shown as a caption for its planned
+  // length — and the failure (file + reasons) goes to the diag log.
   const TTS_SEG = { tts: true };
-  async function loadSeg(voiceId, seg) {
+  async function loadSeg(voiceId, seg, lang, planned) {
+    const why = [];
     for (let s = seg; s; s = s.alt) {
       let b = null;
-      if (s.tts) { if (s.needTts && !ttsAvailable(s.lang)) continue; b = TTS_SEG; }
-      else b = await loadClip(voiceId, s);
+      if (s.tts) { if (s.needTts && !ttsAvailable(s.lang)) { why.push('no phone voice ' + s.lang); continue; } b = TTS_SEG; }
+      else b = await loadClip(voiceId, s, why);
       if (!b) continue;
       if (s !== seg) { seg.text = s.text; seg.tts = !!s.tts; seg.lang = s.lang; seg.used = s; }
       return b;
     }
-    return null;
+    const files = []; for (let s = seg; s; s = s.alt) if (!s.tts) files.push(segUrl(voiceId, s));
+    voiceDiag(`seg fail ${files.join(' > ') || '(tts)'}: ${why.join('; ') || '?'}`);
+    return { tts: true, fb: { text: seg.text || '', lang: seg.lang || lang, est: planned || seg.est || estSec(seg.text || '') } };
   }
-  async function loadClip(voiceId, seg) {
+  async function loadClip(voiceId, seg, why = []) {
     try {
-      const r = await voiceFetch(voiceId, seg);
+      const r = await voiceFetch(voiceId, seg, why);
       if (!r) return null;
       const ab = await r.arrayBuffer();
       return await new Promise((res, rej) => { const p = ctx.decodeAudioData(ab, res, rej); if (p && p.catch) p.catch(rej); });
-    } catch (e) { return null; }
+    } catch (e) { why.push('decode ' + ((e && (e.name || e.message)) || e)); return null; }
   }
   const waitUntil = (t, live) => new Promise((res) => {
     const f = () => (!live() || ctx.currentTime >= t ? res() : setTimeout(f, 200)); f();
@@ -1487,20 +1513,22 @@
   // Segments are scheduled on the audio clock, so pausing (ctx.suspend) freezes voice + ducking together.
   async function runVoice(s, tok) {
     const list = s.segments, g = duck.gain, live = () => tok === voice.token, vid = voice.id, DUCK = duckLevel();
+    const sl = sessionLang(s), plan = (j) => (prog && prog.tok === tok ? prog.clips[j] : 0); // planned length: a failed clip keeps it
+    const load = (j) => loadSeg(vid, list[j], sl, plan(j));
     let t = ctx.currentTime + DUCK_IN, held = false, first = true, lastEnd = ctx.currentTime;
-    let pending = loadSeg(vid, list[0]);
+    let pending = load(0);
     for (let i = 0; i < list.length; i++) {
       const b = await pending;
       if (!live()) return;
       const pauseAfter = list[i].pauseAfterSec || 0, last = i === list.length - 1;
       t = Math.max(t, ctx.currentTime + 0.9);
       const start = t;
-      if (b === TTS_SEG) { // v0.13: a line spoken by the phone's own voice (outside Web Audio): duck, speak, wait for its end
-        const seg = list[i];
+      if (b && b.tts) { // v0.13: a line spoken by the phone's own voice (outside Web Audio): duck, speak, wait for its end
+        const seg = b.fb || list[i]; // v0.13.1: fb = a clip that failed to load (its text, at its planned length)
         progSeg(tok, i, start, seg.est || 3);
         if (first) { rampDuck(DUCK, start + 0.4 - ctx.currentTime); first = false; }
         else if (!held) { g.setValueAtTime(1, start - 0.8); g.exponentialRampToValueAtTime(DUCK, start - 0.8 + DUCK_IN); }
-        if (!last) pending = loadSeg(vid, list[i + 1]); // preload the next clip while the phone speaks
+        if (!last) pending = load(i + 1); // preload the next clip while the phone speaks
         await waitUntil(start, live); if (!live()) return;
         voice.caption = seg.text; renderVoice();
         await speakSeg(seg, live);
@@ -1525,12 +1553,12 @@
         if (!held) { g.setValueAtTime(DUCK, lastEnd); g.exponentialRampToValueAtTime(1, lastEnd + DUCK_OUT); }
         t = lastEnd + pauseAfter;
       } else {
-        // missing/broken segment: skip it, but never leave the music stuck ducked
+        // missing/broken segment (unreachable since v0.13.1: loadSeg resolves failures to a caption): never stuck ducked
         if (held) { const r = Math.max(lastEnd, ctx.currentTime); g.setValueAtTime(DUCK, r); g.exponentialRampToValueAtTime(1, r + DUCK_OUT); held = false; }
         t += pauseAfter;
       }
       if (b) { await waitUntil(start, live); if (!live()) return; voice.caption = list[i].text; renderVoice(); }
-      if (!last) pending = loadSeg(vid, list[i + 1]); // keep at most ~3 decoded buffers alive
+      if (!last) pending = load(i + 1); // keep at most ~3 decoded buffers alive
     }
     await waitUntil(lastEnd + DUCK_OUT, live);
     return live(); // true = played to the end (not stopped)
@@ -1542,15 +1570,20 @@
     voice.sources = [];
     if (ctx) rampDuck(1, DUCK_OUT);
     voice.session = null; voice.caption = '';
+    if (voice.lent) { voice.id = voice.lent; voice.lent = null; } // v0.13.1: a voice lent for one session goes back
     progStop();
     render();
   }
   function startVoice(s) {
+    if (voice.session && voice.lent) stopVoice(); // the previous session's lent voice goes back before this one picks
+    const from = voice.id;
     if (s.aff && !affPrepare(s)) return; // v0.13: affirmations are built from the personal list at start time
     if (!has(voice.id, s.id)) return;
     if (!state.playing) play(); // still inside the tap
     stopVoice();
     voice.session = s.id;
+    voice.lent = voice.id !== from ? from : null; // handed over (affPrepare): for this session only, shown in the card
+    diagLeft = 12;
     if (voice.avail[voice.id + '/' + s.id] === 'remote') cacheSession(voice.id, s);
     const tok = voice.token;
     progStart(s, voice.id, tok);
@@ -1755,8 +1788,9 @@
       const t0 = ctx.currentTime;
       const r = await ttsSpeak(seg.text, seg.lang);
       if (!live()) return;
-      if (r === 'done') return;
-      if (r === 'none') { await waitUntil(t0 + (seg.est || 3), live); return; }
+      // v0.13.1: an engine that reports 'done' at once (said nothing) counts as no voice: the caption keeps the line's length
+      if (r === 'done' && ctx.currentTime - t0 >= 0.25) return;
+      if (r === 'none' || r === 'done') { await waitUntil(t0 + (seg.est || 3), live); return; }
       await new Promise((res) => { const f = () => (!live() || (state.playing && ctx.state === 'running') ? res() : setTimeout(f, 250)); f(); });
       if (!live()) return;
       await waitUntil(ctx.currentTime + 0.8, live); // a breath after the sound fades back in
@@ -1913,6 +1947,16 @@
     }
     try { ms.playbackState = state.playing && !rcMirror() ? 'playing' : (started ? 'paused' : 'none'); } catch (e) { /* noop */ }
   }
+
+  // v0.13.1: what's playing for the APK's media notification (the wrapper's injected JS polls this every 2 s):
+  // title = the meditation / affirmations / preset, sub = its voice or the tagline, el / total = the tile's progress (s).
+  window.__shaketNow = () => {
+    const v = SESSIONS.find((s) => s.id === voice.session), p = PRESETS.find((x) => x.id === state.preset);
+    const pr = v && prog && prog.s === v ? prog : null;
+    const vo = v && VOICES.find((x) => x.id === voice.id);
+    return { title: v ? v.name : p ? t('preset.' + p.id) : t('mode.' + state.mode), sub: vo ? voiceName(vo) : t('tagline'),
+      el: pr ? pr.el : -1, total: pr ? progTotal(pr) : -1, playing: !!state.playing };
+  };
 
   // ---------- UI ----------
   const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
@@ -2116,7 +2160,7 @@
   // ---------- personal settings + "my affirmations" editor (v0.13) ----------
   // Every change goes through rcDo with a local-only key (RC_LOCAL: never sent to a paired phone, never in rcSnap):
   // 'profiles' {list, active} · 'affList' [entries] · 'affPause' 4..15 · 'affTwice' bool.
-  const uiAff = { sig: '', profSig: '', drag: null, nameTO: 0, delArm: null, delTO: 0, focusKey: null, libOpen: false };
+  const uiAff = { sig: '', profSig: '', drag: null, nameTO: 0, delArm: null, delTO: 0, focusKey: null, libOpen: false, sel: null };
   const entryKey = (e) => (e.c != null ? 'c:' + e.cid : 'i:' + e.id);
   const cloneProfs = () => ({ list: profs.list.map((p) => Object.assign({}, p)), active: profs.active });
   // the active profile to edit; one is created on the first name/gender input when none exists yet
@@ -2273,11 +2317,16 @@
   function affRow(e, k, n, l, g) {
     const li = el('li', 'aff-row' + (e.c != null ? ' custom' : ''));
     li.dataset.key = entryKey(e);
+    const isSel = uiAff.sel === li.dataset.key;
+    if (isSel) li.classList.add('sel');
     const h = el('span', 'aff-handle'); h.setAttribute('aria-hidden', 'true'); h.title = t('affDrag');
     h.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18"><g fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></g></svg>';
     const tx = el('span', 'aff-text'); tx.lang = l; tx.dir = l === 'ru' ? 'ltr' : 'rtl';
     tx.textContent = affEntryText(e, l, g);
-    const body = el('span', 'aff-body'); body.append(tx);
+    // tapping the text selects the row: its ▲ ▼ ✕ appear under the text (tap again / another row to move or hide them)
+    const body = el('button', 'aff-body'); body.type = 'button'; body.append(tx);
+    body.setAttribute('aria-expanded', String(isSel));
+    body.addEventListener('click', () => affSelect(li.dataset.key));
     if (e.c != null) { const tag = el('span', 'tag'); tag.textContent = t('tagPhone'); body.append(tag); }
     const btn = (cls, label, aria, fn, dis) => {
       const b = el('button', 'icon-btn ' + cls); b.type = 'button'; b.textContent = label; b.setAttribute('aria-label', aria);
@@ -2286,12 +2335,26 @@
       return b;
     };
     const short = tx.textContent.length > 24 ? tx.textContent.slice(0, 24) + '…' : tx.textContent;
-    li.append(h, body,
+    const ctrls = el('span', 'aff-ctrls');
+    ctrls.append(
       btn('up', '▲', t('affUp', short), () => affMove(k, k - 1), k === 0),
       btn('down', '▼', t('affDown', short), () => affMove(k, k + 1), k === n - 1),
-      btn('rm', '✕', t('affRm', short), () => { const key = li.dataset.key; uiAff.focusKey = null; rcDo('affList', aff.list.filter((x) => entryKey(x) !== key)); }));
+      btn('rm', '✕', t('affRm', short), () => {
+        const key = li.dataset.key; uiAff.focusKey = null; if (uiAff.sel === key) uiAff.sel = null;
+        rcDo('affList', aff.list.filter((x) => entryKey(x) !== key));
+      }));
+    li.append(h, body, ctrls);
     affDrag(h, li);
     return li;
+  }
+  // one selected row at a time; toggled in place (no rebuild), so focus stays on the tapped text
+  function affSelect(key) {
+    uiAff.sel = uiAff.sel === key ? null : key;
+    [...$('#affList').children].forEach((r) => {
+      const on = r.dataset.key === uiAff.sel, b = r.querySelector('.aff-body');
+      r.classList.toggle('sel', on);
+      if (b) b.setAttribute('aria-expanded', String(on));
+    });
   }
   // drag to reorder: only the handle drags (touch-action: none on it), so swiping anywhere else scrolls the page
   function affDrag(h, li) {
@@ -2312,7 +2375,7 @@
       let to = 0;
       R.forEach((r, i) => { if (i !== d.from && r.top + r.height / 2 < mid) to++; });
       d.to = to;
-      const gap = me.height + 8;
+      const gap = me.height + (parseFloat(getComputedStyle($('#affList')).rowGap) || 0);
       d.rows.forEach((r, i) => {
         if (i === d.from) return;
         const sh = d.from < to && i > d.from && i <= to ? -gap : d.from > to && i >= to && i < d.from ? gap : 0;
@@ -2475,6 +2538,14 @@
     if (cap.lang !== capLang) { cap.lang = capLang; cap.dir = capLang === 'ru' ? 'ltr' : 'rtl'; }
     cap.textContent = voice.caption;
     cap.hidden = !voice.caption;
+    // v0.13.1: a handed-over session names the voice it really plays in ("האפירמציות בקול 1 — רך")
+    let note = ui.lentNote;
+    if (!note) { note = ui.lentNote = el('p', 'voice-caption voice-lent'); cap.before(note); }
+    const lv = voice.lent && cs && VOICES.find((v) => v.id === voice.id);
+    const lt = lv ? (capLang === 'ru' ? I18N.ru.lentVoice(I18N.ru['voice.' + lv.id] || lv.name_ru || lv.name) : t('lentVoice', voiceName(lv))) : '';
+    if (note.lang !== capLang) { note.lang = capLang; note.dir = capLang === 'ru' ? 'ltr' : 'rtl'; }
+    setText(note, lt);
+    note.hidden = !lt;
   }
 
   function renderSleep() {
