@@ -1,5 +1,11 @@
 'use strict';
-/* שקט v0.14.0 — Web Audio meditation app. UI is Hebrew-only (RTL); guided meditations in Hebrew or Russian.
+/* שקט v0.15.0 — Web Audio meditation app. UI is Hebrew-only (RTL); guided meditations in Hebrew or Russian.
+   v0.15: playlists + loop — a "רשימת השמעה" card per meditation language (local-only, never mirrored): guided sessions
+   and the affirmations session in sequence through the same session player, a 0/10/30/60 s voice gap (background sound
+   continues), "חזרה בלולאה", and a "🔁" repeat-one switch on the session player (= a 1-item playlist in loop mode).
+   Unplayable items are skipped with a note; a list where every item fails stops (never a tight loop). Remote: the
+   controller can start/stop the player phone's own list and toggle loop / repeat ('plPlay', 'plLoop', 'plRepeat').
+   A session that has no clips in the chosen voice is handed over to one that has them (as the affirmations were).
    v0.14: Solfeggio tones — a new 'solfeggio' layer (off by default) with its own card: the 9 classic frequencies
    (174…963 Hz), each a soft sine + one quiet octave partial, slow breathing, gentle low-pass, per-tone level matching
    and an equal-power 1.5 s crossfade between tones. Synthesized live in both engines; bypasses the duck bus (like
@@ -110,6 +116,7 @@
       affWa: 'שלחו לשירה בוואטסאפ משפטים שתרצו בקול החם', affPause: (n) => `הפסקה אחרי כל משפט · ${n} שנ׳`, sec: (n) => `${n} שניות`,
       affTwice: 'לחזור על כל משפט פעמיים', affLibDone: 'סיום', affDrag: 'גררו כדי לשנות סדר',
       lentVoice: (n) => 'האפירמציות ב' + n, // + 'קול 1 — רך' -> "בקול 1 — רך"
+      lentVoiceMed: (n) => 'המדיטציה ב' + n, // v0.15: a meditation this voice has no recording of
       affUp: (x) => 'הזזה למעלה: ' + x, affDown: (x) => 'הזזה למטה: ' + x, affRm: (x) => 'הסרה: ' + x,
       'mode.alpha': 'רוגע', 'mode.alpha.sub': 'אלפא · 10Hz',
       'mode.delta': 'שינה', 'mode.delta.sub': 'דלתא · 2.5Hz',
@@ -123,6 +130,17 @@
       'layer.solfeggio': 'צליל סולפג׳יו', 'preset.solf528': 'סולפג׳יו 528',
       'solf.174': 'הרפיה', 'solf.285': 'גוף', 'solf.396': 'שחרור פחד', 'solf.417': 'שינוי', 'solf.528': 'אהבה',
       'solf.639': 'קשר', 'solf.741': 'בהירות', 'solf.852': 'אינטואיציה', 'solf.963': 'שלמות',
+      // v0.15 playlist + loop
+      plTitle: 'רשימת השמעה', plSub: 'כמה מדיטציות ואפירמציות ברצף, בשפת המדיטציה',
+      plEmpty: 'הרשימה ריקה — מוסיפים מדיטציות או אפירמציות, והן יתנגנו ברצף.', plAdd: '+ הוספה לרשימה', plPickDone: 'סיום',
+      plListAria: 'פריטי רשימת ההשמעה', plGapLbl: 'הפסקה בין פריטים', plGap: (n) => (n === 0 ? 'ללא' : n === 60 ? 'דקה' : `${n} שנ׳`),
+      plLoop: '🔁 חזרה בלולאה', plPlay: '▶ השמעת הרשימה', plStop: '■ עצירת הרשימה',
+      plNow: (k, n) => `מתנגן עכשיו: ${k} מתוך ${n} ·`, plNext: (k, n, left) => `הפסקה · בעוד ${left} — ${k} מתוך ${n}:`,
+      plTotal: (m, loop) => `כ־${m} דק׳` + (loop ? ' · בלולאה' : ''), plDurMin: (m) => `כ־${m} דק׳`,
+      plSkip: (n) => `דילוג: «${n}» — אין הקלטה זמינה`, plAllFail: 'אף פריט ברשימה לא זמין להשמעה — הרשימה נעצרה',
+      plDone: 'הרשימה הסתיימה', plMirrorNote: 'הכפתורים מפעילים את הרשימה שבטלפון המנגן',
+      plRepeat: '🔁 חזרה על המדיטציה', plRepeatSub: 'עד שעוצרים', plGapNotif: 'הפסקה קצרה',
+      plAgain: '🔁 עוד רגע מתחילים שוב',
       // voice.<id>: none in Hebrew -> the VOICES registry name is used
     },
     ru: {
@@ -154,7 +172,17 @@
       'solf.639': 'Связь', 'solf.741': 'Ясность', 'solf.852': 'Интуиция', 'solf.963': 'Целостность',
       'voice.marin': 'Голос 1 — мягкий', 'voice.shimmer': 'Голос 2 — светлый',
       'voice.sage': 'Голос 3 — спокойный', 'voice.cedar': 'Голос 4 — глубокий',
-      lentVoice: (n) => 'Аффирмации: ' + n,
+      lentVoice: (n) => 'Аффирмации: ' + n, lentVoiceMed: (n) => 'Медитация: ' + n,
+      plTitle: 'Плейлист', plSub: 'Несколько медитаций и аффирмаций подряд, на языке медитации',
+      plEmpty: 'Список пуст — добавьте медитации или аффирмации, и они прозвучат одна за другой.', plAdd: '+ Добавить', plPickDone: 'Готово',
+      plListAria: 'Элементы плейлиста', plGapLbl: 'Пауза между элементами', plGap: (n) => (n === 0 ? 'Без паузы' : n === 60 ? '1 мин' : `${n} с`),
+      plLoop: '🔁 Повторять по кругу', plPlay: '▶ Запустить плейлист', plStop: '■ Остановить',
+      plNow: (k, n) => `Сейчас: ${k} из ${n} ·`, plNext: (k, n, left) => `Пауза · через ${left} — ${k} из ${n}:`,
+      plTotal: (m, loop) => `≈ ${m} мин` + (loop ? ' · по кругу' : ''), plDurMin: (m) => `~${m} мин`,
+      plSkip: (n) => `Пропуск: «${n}» — нет доступной записи`, plAllFail: 'Ни один элемент недоступен — плейлист остановлен',
+      plDone: 'Плейлист закончился', plMirrorNote: 'Кнопки запускают плейлист на телефоне-плеере',
+      plRepeat: '🔁 Повторять медитацию', plRepeatSub: 'пока не остановите', plGapNotif: 'Короткая пауза',
+      plAgain: '🔁 Скоро начнём снова',
     },
   };
   // v0.9: the UI is always Hebrew (user feedback: "only the meditations in Russian"). The ru table stays for a
@@ -1453,15 +1481,16 @@
       hold(p, t); p.setTargetAtTime(1, t, 0.3);
       p.setValueCurveAtTime(fadeCurve, t + 0.5 + a * D, Math.max(0.5, (b - a) * D - 0.5));
     });
-    if (sleep.voice) {
+    if (sleep.voice && !plRun) { // v0.15: a running playlist / repeat keeps its own voice (it still runs in sleep mode)
       const vs = SESSIONS.find((s) => s.id === SLEEP_SESSION[medLang]);
       if (vs && !has(voice.id, vs.id)) { const v = VOICES.find((x) => has(x.id, vs.id)); if (v) setVoice(v.id, false); }
-      if (vs && has(voice.id, vs.id)) startVoice(vs);
+      if (vs && has(voice.id, vs.id) && startVoice(vs)) voice.fromSleep = voice.token; // never repeated by 🔁
     }
     render();
   }
   function endSleep() { // natural finish: everything is already silent
     sleep.on = false; sleep.done = true;
+    plEnd(); // v0.15: the sleep timer ends a playlist too
     if (voice.session) stopVoice();
     if (state.playing) pause(true);
     restoreFades(true);
@@ -1492,6 +1521,8 @@
     id: VOICES.some((v) => v.id === savedVoice) ? savedVoice : DEFAULT_VOICE,
     session: null, token: 0, sources: [], avail: {}, checked: false, caption: '',
     lent: null, // v0.13.1: the chosen voice while another one plays this session (it has no clips for it)
+    startedAt: 0, fromSleep: -1, // v0.15: wall-clock start (quick-end guard) · token of a session sleep mode started
+    cut: -1, // v0.15 debug (?debug=1): token of a session marked finished by __shaket.pl.end() (headless clocks are frozen)
   };
   // v0.13: seg.priv = a private APK-only clip under voice-private/ (never on the site, never fetched remotely)
   const segUrl = (voiceId, seg) => `${seg.priv ? 'voice-private' : 'voice'}/${voiceId}/${seg.file}`;
@@ -1622,7 +1653,7 @@
 
   // Segments are scheduled on the audio clock, so pausing (ctx.suspend) freezes voice + ducking together.
   async function runVoice(s, tok) {
-    const list = s.segments, g = duck.gain, live = () => tok === voice.token, vid = voice.id, DUCK = duckLevel();
+    const list = s.segments, g = duck.gain, live = () => tok === voice.token && voice.cut !== tok, vid = voice.id, DUCK = duckLevel();
     const sl = sessionLang(s), plan = (j) => (prog && prog.tok === tok ? prog.clips[j] : 0); // planned length: a failed clip keeps it
     const load = (j) => loadSeg(vid, list[j], sl, plan(j));
     let t = ctx.currentTime + DUCK_IN, held = false, first = true, lastEnd = ctx.currentTime;
@@ -1674,6 +1705,8 @@
     return live(); // true = played to the end (not stopped)
   }
   function stopVoice() {
+    // v0.15: anything that stops a playlist's session from outside (tile tap, voice change, language) ends the playlist
+    if (plRun && plRun.phase === 'play' && !plStarting) { plEnd(); return; } // (plEnd comes back here once)
     voice.token++;
     ttsCancel();
     voice.sources.forEach((s) => { try { s.stop(); } catch (e) { /* not started */ } });
@@ -1684,22 +1717,36 @@
     progStop();
     render();
   }
+  // returns true when the session really started (v0.15: the playlist skips an item that can't)
   function startVoice(s) {
     if (voice.session && voice.lent) stopVoice(); // the previous session's lent voice goes back before this one picks
     const from = voice.id;
-    if (s.aff && !affPrepare(s)) return; // v0.13: affirmations are built from the personal list at start time
-    if (!has(voice.id, s.id)) return;
+    if (s.aff) { if (!affPrepare(s)) return false; } // v0.13: affirmations are built from the personal list at start time
+    else if (!has(voice.id, s.id)) { // v0.15: no clips in this voice -> hand over to one that has them (like the affirmations)
+      const v = VOICES.find((x) => has(x.id, s.id));
+      if (!v) return false;
+      setVoice(v.id, false);
+    }
+    if (!has(voice.id, s.id)) return false;
     if (!state.playing) play(); // still inside the tap
     stopVoice();
     voice.session = s.id;
-    voice.lent = voice.id !== from ? from : null; // handed over (affPrepare): for this session only, shown in the card
+    voice.lent = voice.id !== from ? from : null; // handed over: for this session only, shown in the card
+    voice.startedAt = Date.now();
     diagLeft = 12;
     if (voice.avail[voice.id + '/' + s.id] === 'remote') cacheSession(voice.id, s);
     const tok = voice.token;
     progStart(s, voice.id, tok);
-    runVoice(s, tok).then((done) => { if (done) progDone(tok); }, () => {})
-      .finally(() => { if (tok === voice.token) stopVoice(); });
+    runVoice(s, tok).then((done) => !!done || voice.cut === tok, () => false).then((done) => {
+      if (tok !== voice.token) return; // stopped or replaced meanwhile
+      const mine = !!plRun && plRun.tok === tok;
+      if (mine) plRun.phase = 'ending'; // this stopVoice belongs to the playlist
+      if (done) progDone(tok);
+      stopVoice();
+      plAfter(s, done, tok, mine);
+    });
     render();
+    return true;
   }
   // ---------- "I am" affirmations (v0.13) ----------
   // A guided session per meditation language ('aff' / 'ru_aff') built at start time from the personal list:
@@ -1836,6 +1883,160 @@
       if (s) jobs.push(availability(v.id, s.probe).then((ok) => { voice.avail[v.id + '/' + s.id] = ok; }));
     }));
     Promise.all(jobs).then(() => render());
+  }
+
+  // ---------- playlist + loop (v0.15) ----------
+  // One list per meditation language (localStorage, this phone only — like the affirmation list): items [{k, sid}]
+  // (k = row key, a session may appear twice), the voice gap between items (s) and the loop switch; plus one global
+  // "repeat one" switch on the session player. A RUN plays the items through startVoice, one after another: when a
+  // session ends naturally the gap is waited (wall clock, counted only while playing — a pause freezes it, the
+  // background sound simply continues), then the next item starts; after the last one it wraps (loop) or ends.
+  // The run reads the LIVE list (an edit during playback applies from the next item). Repeat-one = a 1-item run in loop
+  // mode, created when a manually started session ends naturally while 🔁 is on. Guards: an item that can't start (no
+  // clips in any voice, an empty affirmation list) is skipped with a note at once (no gap: nothing played); a session
+  // that "ends" within PL_QUICK_MS counts as failed too; `fails` counts consecutive failures and reaching the list's
+  // length stops the run — an all-failing loop never spins. Stop (■, a tile tap, a voice / language change, the sleep
+  // timer's end) ends the run; pause / the regular timer only pause it.
+  const PL_KEY = 'shaket.playlist', PL_GAPS = [0, 10, 30, 60], PL_GAP_DEF = 10, PL_MAX = 40, PL_QUICK_MS = 4000, PL_NOTE_MS = 12000;
+  const plKeyOk = (k) => typeof k === 'string' && /^[a-z0-9]{1,24}$/.test(k);
+  const plItemShape = (e) => !!e && typeof e === 'object' && plKeyOk(e.k) && typeof e.sid === 'string' && /^[a-z_]{1,32}$/.test(e.sid);
+  // rcValid: a list for the CURRENT meditation language, of sessions that exist in it, unique row keys
+  const plItemsOk = (v) => Array.isArray(v) && v.length <= PL_MAX && v.every(plItemShape)
+    && new Set(v.map((e) => e.k)).size === v.length && v.every((e) => SESSIONS.some((s) => s.id === e.sid && sessionLang(s) === medLang));
+  const pl = { lists: {}, repeat: false };
+  LANGS.forEach((l) => { pl.lists[l] = { items: [], gap: PL_GAP_DEF, loop: false }; });
+  (function plRestore() {
+    const v = lsGet(PL_KEY);
+    if (!v || typeof v !== 'object') return;
+    LANGS.forEach((l) => {
+      const L = v[l];
+      if (!L || typeof L !== 'object') return;
+      if (Array.isArray(L.items)) pl.lists[l].items = L.items.filter(plItemShape).slice(0, PL_MAX); // sids checked in buildPlUI
+      if (PL_GAPS.includes(L.gap)) pl.lists[l].gap = L.gap;
+      if (typeof L.loop === 'boolean') pl.lists[l].loop = L.loop;
+    });
+    if (typeof v.repeat === 'boolean') pl.repeat = v.repeat;
+  })();
+  const plSave = () => lsSet(PL_KEY, Object.assign({ repeat: pl.repeat }, pl.lists));
+  const plList = (l) => pl.lists[l] || pl.lists.he;
+  let plRun = null, plStarting = false, plNote = null; // plNote = { text, at, keep }
+  const plMirror = { play: false, loop: false, repeat: false }; // a mirroring controller shows the player's values
+  const plLog = []; // test trace (exposed under ?debug=1): {ev, sid, i, n, at}
+  const plTrace = (ev, o) => { plLog.push(Object.assign({ ev, at: Date.now() }, o)); if (plLog.length > 80) plLog.shift(); };
+  const plItemsOf = (r) => (r.single ? [{ k: 'one', sid: r.sid }] : plList(r.lang).items);
+  const plSession = (sid, l) => SESSIONS.find((s) => s.id === sid && sessionLang(s) === l) || null;
+  const plSetNote = (text, keep) => { plNote = { text, at: Date.now(), keep: !!keep }; };
+  const plAgainS = () => (plRun && plRun.single && plRun.phase === 'gap' ? plSession(plRun.sid, plRun.lang) : null); // 🔁 between repeats
+  function plStart() {
+    if (!voice.checked) return;
+    plEnd();
+    const L = plList(medLang);
+    plNote = null;
+    if (!L.items.length) { render(); return; }
+    if (!state.playing) play(); // inside the tap (a later item may start outside any gesture)
+    plRun = { lang: medLang, single: false, sid: null, i: -1, curK: null, tok: -1, phase: 'idle', fails: 0, gapTO: 0, gapLeft: 0, gapAt: 0, nextI: 0 };
+    plTrace('run', { n: L.items.length });
+    plGo(0);
+  }
+  // start item i (wrapping / ending as needed); skips what can't start, bounded by the list length
+  function plGo(i) {
+    const r = plRun;
+    if (!r) return;
+    clearTimeout(r.gapTO); r.gapTO = 0;
+    for (let tries = 0; ; tries++) {
+      const items = plItemsOf(r), n = items.length;
+      if (!n) { plFinish('empty'); return; } // emptied meanwhile (also guards a loop over nothing)
+      if (i >= n) { if (!r.single && !plList(r.lang).loop) { plFinish('end'); return; } i = 0; }
+      if (tries >= n) { plFinish('fail'); return; }
+      const it = items[i], s = plSession(it.sid, r.lang);
+      r.i = i; r.curK = it.k;
+      plStarting = true;
+      let ok = false;
+      try { ok = !!s && startVoice(s); } finally { plStarting = false; }
+      if (ok) { r.phase = 'play'; r.tok = voice.token; plTrace('start', { sid: it.sid, i, n }); render(); return; }
+      r.fails++;
+      plTrace('skip', { sid: it.sid, i, n });
+      plSetNote(t('plSkip', s ? s.name : it.sid));
+      if (r.fails >= n) { plFinish('fail'); return; }
+      i++;
+    }
+  }
+  // a session ended (startVoice's end handler). `mine` = it was this run's item
+  function plAfter(s, done, tok, mine) {
+    let r = plRun;
+    if (!mine) {
+      // 🔁 repeat one: a manually started session that ended naturally (not sleep mode's own voice, not on a mirror)
+      if (r || !done || !pl.repeat || tok === voice.fromSleep || rcMirror()) return;
+      r = plRun = { lang: sessionLang(s), single: true, sid: s.id, i: 0, curK: 'one', tok, phase: 'ending', fails: 0, gapTO: 0, gapLeft: 0, gapAt: 0, nextI: 0 };
+      plTrace('repeat', { sid: s.id });
+    }
+    const n = plItemsOf(r).length;
+    const quick = !done || (voice.cut !== tok && Date.now() - voice.startedAt < PL_QUICK_MS);
+    plTrace('end', { sid: s.id, i: r.i, n, done, quick });
+    if (quick) {
+      r.fails++;
+      if (!done) plSetNote(t('plSkip', s.name));
+      if (r.fails >= Math.max(1, n)) { plFinish('fail'); return; }
+    } else r.fails = 0;
+    if (r.single && !pl.repeat) { plFinish('off'); return; }
+    let next = 0;
+    if (!r.single) {
+      const items = plItemsOf(r), at = items.findIndex((x) => x.k === r.curK);
+      next = at >= 0 ? at + 1 : r.i; // the current row was removed: whatever slid into its place
+      if (next >= items.length && !plList(r.lang).loop) { plFinish('end'); return; }
+    }
+    r.phase = 'gap'; r.nextI = next;
+    r.gapLeft = plList(r.lang).gap * 1000; r.gapAt = Date.now();
+    plTrace('gap', { sec: plList(r.lang).gap, next });
+    plGapTick();
+    render();
+  }
+  // the gap counts down only while playing (pause / a frozen remote player hold it), ≤ 4 checks/s
+  function plGapTick() {
+    const r = plRun;
+    if (!r || r.phase !== 'gap') return;
+    const now = Date.now();
+    if (state.playing) r.gapLeft -= now - r.gapAt;
+    r.gapAt = now;
+    if (r.gapLeft <= 0) { plGo(r.nextI); return; }
+    r.gapTO = setTimeout(plGapTick, Math.min(250, r.gapLeft));
+  }
+  function plFinish(why) {
+    const r = plRun;
+    if (!r) return;
+    plRun = null; clearTimeout(r.gapTO);
+    plTrace('finish', { why });
+    if (why === 'fail') plSetNote(t('plAllFail'), true);
+    else if (why === 'end' && !r.single) plSetNote(t('plDone'), true);
+    render();
+  }
+  // stop: ends the run and its session (if one is playing)
+  function plEnd() {
+    const r = plRun;
+    if (!r) return;
+    plRun = null; clearTimeout(r.gapTO);
+    plTrace('stop', {});
+    if (r.phase === 'play') stopVoice(); else render();
+  }
+  // what the run is doing now (null: no multi-item run): k/n are 1-based; sid = the playing or the next item
+  function plNowInfo() {
+    const r = plRun;
+    if (!r || r.single) return null;
+    const items = plItemsOf(r), n = items.length, gap = r.phase === 'gap';
+    let i = gap ? r.nextI : r.i;
+    if (gap && i >= n) i = 0;
+    const it = items[i] || items[items.length - 1];
+    return it ? { k: Math.min(i, n - 1) + 1, n, sid: it.sid, gap, left: gap ? Math.max(0, r.gapLeft) : 0, key: gap ? null : r.curK } : null;
+  }
+  // nominal minutes of one item: the session's own "5 דק׳"; affirmations: estimated from the list as it is now
+  function plItemMin(s) {
+    if (!s) return 0;
+    if (!s.aff) return parseFloat(String(s.dur || '').replace(',', '.')) || 0;
+    if (!aff.lib) return 0;
+    const segs = affBuild(s.lang);
+    if (!segs.length) return 0;
+    const sec = DUCK_IN + segs.reduce((a, g, j) => a + (g.est || 3) + (j < segs.length - 1 ? g.pauseAfterSec || 0 : 0), 0) + DUCK_OUT;
+    return Math.max(1, Math.round(sec / 60));
   }
 
   // ---------- phone voice (TTS) for custom lines + spoken names (v0.13) ----------
@@ -2046,8 +2247,10 @@
   function updateMediaSession() {
     if (!('mediaSession' in navigator)) return;
     const ms = navigator.mediaSession;
-    const v = SESSIONS.find((s) => s.id === voice.session), p = PRESETS.find((x) => x.id === state.preset);
-    const artist = v ? `${v.name} · ${voiceName(VOICES.find((x) => x.id === voice.id))}` : p ? t('preset.' + p.id) : t('mode.' + state.mode);
+    const v = SESSIONS.find((s) => s.id === voice.session), p = PRESETS.find((x) => x.id === state.preset), pn = plNowInfo();
+    const pv = pn && pn.gap ? plSession(pn.sid, plRun.lang) : plAgainS(); // in a gap: the next item / the repeated one
+    const artist = (pn ? `${pn.k}/${pn.n} · ` : '') + (v ? `${v.name} · ${voiceName(VOICES.find((x) => x.id === voice.id))}`
+      : pv ? pv.name : p ? t('preset.' + p.id) : t('mode.' + state.mode));
     if (lang + artist !== msArtist && typeof MediaMetadata !== 'undefined') {
       try {
         ms.metadata = new MediaMetadata({ title: t('appName'), artist, album: t('tagline'),
@@ -2060,11 +2263,14 @@
 
   // v0.13.1: what's playing for the APK's media notification (the wrapper's injected JS polls this every 2 s):
   // title = the meditation / affirmations / preset, sub = its voice or the tagline, el / total = the tile's progress (s).
+  // v0.15: inside a playlist the title is "k/n · <item>" (the playing item, or in the gap the next one, with no progress)
   window.__shaketNow = () => {
     const v = SESSIONS.find((s) => s.id === voice.session), p = PRESETS.find((x) => x.id === state.preset);
     const pr = v && prog && prog.s === v ? prog : null;
     const vo = v && VOICES.find((x) => x.id === voice.id);
-    return { title: v ? v.name : p ? t('preset.' + p.id) : t('mode.' + state.mode), sub: vo ? voiceName(vo) : t('tagline'),
+    const pn = plNowInfo(), pv = pn && pn.gap ? plSession(pn.sid, plRun.lang) : plAgainS();
+    const name = v ? v.name : pv ? pv.name : p ? t('preset.' + p.id) : t('mode.' + state.mode);
+    return { title: (pn ? `${pn.k}/${pn.n} · ` : '') + name, sub: vo ? voiceName(vo) : pv ? t('plGapNotif') : t('tagline'),
       el: pr ? pr.el : -1, total: pr ? progTotal(pr) : -1, playing: !!state.playing };
   };
 
@@ -2281,6 +2487,7 @@
     initMediaSession();
     checkVoice();
     buildAffUI();
+    buildPlUI();
     rcInit();
   }
 
@@ -2581,6 +2788,158 @@
     return s.lang === 'ru' ? `${n} ${ruPlural(n, 'фраза', 'фразы', 'фраз')}` : n === 1 ? 'משפט אחד' : `${n} משפטים`;
   };
 
+  // ---------- playlist card + 🔁 switch (v0.15) ----------
+  // Same compact editor as "האפירמציות שלי": tap a row to reveal ▲ ▼ ✕ under it. Content edits go through rcDo with
+  // local-only keys ('plItems', 'plGap'); play/stop, loop and repeat-one are remote-controllable ('plPlay', 'plLoop',
+  // 'plRepeat'). A mirroring controller hides its own list (the player plays ITS list) and shows the player's status.
+  const uiPl = { built: false, sig: '', sel: null, pickOpen: false, focusKey: null, gaps: {} };
+  const plIsPlaying = () => (rcMirror() ? plMirror.play : !!(plRun && !plRun.single));
+  const plLoopOn = () => (rcMirror() ? plMirror.loop : plList(medLang).loop);
+  const plRepeatOn = () => (rcMirror() ? plMirror.repeat : pl.repeat);
+  const plDurText = (s) => {
+    if (!s.aff) return s.dur || '';
+    const m = plItemMin(s);
+    return m ? (I18N[s.lang] || I18N.he).plDurMin(m) : affDurText(s);
+  };
+  function buildPlUI() {
+    // rows whose session doesn't exist here (e.g. affirmations without affirmations.json) are left out of the card
+    LANGS.forEach((l) => { const L = pl.lists[l]; L.items = L.items.filter((e) => plSession(e.sid, l)); });
+    PL_GAPS.forEach((sec) => {
+      const b = el('button', 'chip'); b.type = 'button'; b.textContent = t('plGap', sec);
+      b.addEventListener('click', () => rcDo('plGap', sec));
+      $('#plGaps').append(b); uiPl.gaps[sec] = b;
+    });
+    $('#plAddBtn').addEventListener('click', () => { uiPl.pickOpen = !uiPl.pickOpen; uiPl.sig = ''; renderPl(); });
+    $('#plLoop').addEventListener('click', () => rcDo('plLoop', !plLoopOn()));
+    $('#plPlay').addEventListener('click', () => rcDo('plPlay', !plIsPlaying()));
+    $('#plRepeat').addEventListener('click', () => rcDo('plRepeat', !plRepeatOn()));
+    uiPl.built = true;
+  }
+  // move row `from` to position `to` of the current language's list
+  function plMove(from, to) {
+    const items = plList(medLang).items.slice();
+    if (from === to || from < 0 || to < 0 || from >= items.length || to >= items.length) return;
+    const [it] = items.splice(from, 1); items.splice(to, 0, it);
+    rcDo('plItems', items);
+  }
+  function plSelect(key) {
+    uiPl.sel = uiPl.sel === key ? null : key;
+    [...$('#plList').children].forEach((r) => {
+      const on = r.dataset.key === uiPl.sel, b = r.querySelector('.aff-body');
+      r.classList.toggle('sel', on);
+      if (b) b.setAttribute('aria-expanded', String(on));
+    });
+  }
+  function plRow(e, k, n, l, curKey) {
+    const s = plSession(e.sid, l), li = el('li', 'aff-row pl-row');
+    li.dataset.key = e.k;
+    const isSel = uiPl.sel === e.k;
+    if (isSel) li.classList.add('sel');
+    if (curKey === e.k) { li.classList.add('cur'); li.setAttribute('aria-current', 'true'); }
+    const idx = el('span', 'pl-idx'); idx.textContent = String(k + 1); idx.setAttribute('aria-hidden', 'true');
+    const body = el('button', 'aff-body'); body.type = 'button';
+    body.setAttribute('aria-expanded', String(isSel));
+    const nm = el('span', 'aff-text pl-name'), du = el('small', 'pl-dur');
+    nm.lang = du.lang = l; nm.dir = du.dir = l === 'ru' ? 'ltr' : 'rtl';
+    nm.textContent = s.name; du.textContent = plDurText(s);
+    body.append(nm, du);
+    body.addEventListener('click', () => plSelect(e.k));
+    const btn = (cls, label, aria, fn, dis) => {
+      const b = el('button', 'icon-btn ' + cls); b.type = 'button'; b.textContent = label; b.setAttribute('aria-label', aria);
+      b.disabled = !!dis; b.dataset.act = cls;
+      b.addEventListener('click', () => { uiPl.focusKey = [e.k, cls]; fn(); });
+      return b;
+    };
+    const ctrls = el('span', 'aff-ctrls');
+    ctrls.append(
+      btn('up', '▲', t('affUp', s.name), () => plMove(k, k - 1), k === 0),
+      btn('down', '▼', t('affDown', s.name), () => plMove(k, k + 1), k === n - 1),
+      btn('rm', '✕', t('affRm', s.name), () => {
+        uiPl.focusKey = null; if (uiPl.sel === e.k) uiPl.sel = null;
+        rcDo('plItems', plList(l).items.filter((x) => x.k !== e.k));
+      }));
+    li.append(idx, body, ctrls);
+    return li;
+  }
+  function renderPlPick(l) {
+    const box = $('#plPick'), items = plList(l).items;
+    box.textContent = '';
+    const grid = el('div', 'pl-opts');
+    langSessions().forEach((s) => {
+      const b = el('button', 'chip pl-opt'); b.type = 'button'; b.lang = l; if (l === 'ru') b.dir = 'ltr';
+      const nm = el('span'), du = el('small'); nm.textContent = s.name; du.textContent = plDurText(s);
+      b.append(nm, du);
+      b.disabled = items.length >= PL_MAX || (voice.checked && !VOICES.some((v) => has(v.id, s.id))) || (!!s.aff && !affEntries(s.lang).length);
+      b.addEventListener('click', () => {
+        const cur = plList(l).items;
+        if (cur.length < PL_MAX) rcDo('plItems', cur.concat([{ k: newId('q'), sid: s.id }]));
+      });
+      grid.append(b);
+    });
+    const done = el('button', 'chip aff-lib-done'); done.type = 'button'; done.textContent = t('plPickDone');
+    done.addEventListener('click', () => { uiPl.pickOpen = false; uiPl.sig = ''; renderPl(); $('#plAddBtn').focus(); });
+    box.append(grid, done);
+  }
+  // status of the run as this phone should show it: its own run, or (mirroring controller) the player's
+  function plShownNow() {
+    if (!rcMirror()) return plNowInfo();
+    const R = rc.remote, x = R && R.x && R.x.pl;
+    if (!plMirror.play || !Array.isArray(x) || x.length !== 5 || !(x[0] >= 1 && x[1] >= x[0]) || typeof x[2] !== 'string') return null;
+    return { k: x[0] | 0, n: x[1] | 0, sid: x[2], gap: !!x[3], left: Math.max(0, (+x[4] || 0) - (Date.now() - R.at)), key: null };
+  }
+  // the parts that change every second (status, countdown, note, buttons); the list is rebuilt only when it changed
+  function renderPlLive() {
+    if (!uiPl.built) return;
+    const mir = rcMirror(), L = plList(medLang), playing = plIsPlaying(), st = plShownNow();
+    $('#plLoop').setAttribute('aria-checked', String(plLoopOn()));
+    $('#plRepeat').setAttribute('aria-checked', String(plRepeatOn()));
+    const pb = $('#plPlay');
+    pb.setAttribute('aria-pressed', String(playing));
+    setText(pb, playing ? t('plStop') : t('plPlay'));
+    pb.disabled = !mir && !playing && (!voice.checked || !L.items.length);
+    for (const sec in uiPl.gaps) uiPl.gaps[sec].setAttribute('aria-pressed', String(L.gap === +sec));
+    const nowEl = $('#plNow'), nameEl = $('#plNowName');
+    nowEl.hidden = !st;
+    if (st) {
+      const s = plSession(st.sid, mir ? medLang : plRun.lang) || SESSIONS.find((x) => x.id === st.sid);
+      setText($('#plNowTxt'), st.gap ? t('plNext', st.k, st.n, fmt(Math.ceil(st.left / 1000) * 1000)) : t('plNow', st.k, st.n));
+      const nl = s ? sessionLang(s) : 'he';
+      if (nameEl.lang !== nl) { nameEl.lang = nl; nameEl.dir = nl === 'ru' ? 'ltr' : 'rtl'; }
+      setText(nameEl, s ? s.name : '');
+    }
+    const noteEl = $('#plNote'), nt = plNote && ((plNote.keep && !playing) || Date.now() - plNote.at < PL_NOTE_MS) ? plNote.text : '';
+    noteEl.hidden = !nt; setText(noteEl, nt);
+    $('#plMirrorNote').hidden = !mir;
+    $('#plEdit').hidden = mir;
+    let min = 0;
+    L.items.forEach((e) => { min += plItemMin(plSession(e.sid, medLang)); });
+    if (L.items.length > 1) min += (L.gap * (L.items.length - 1)) / 60;
+    const tot = $('#plTotal');
+    tot.hidden = mir || !min; setText(tot, min ? t('plTotal', Math.round(min), L.loop) : '');
+  }
+  function renderPl() {
+    if (!uiPl.built) return;
+    renderPlLive();
+    const l = medLang, L = plList(l), st = rcMirror() ? null : plNowInfo(), curKey = st ? st.key : null;
+    const avail = langSessions().map((s) => (VOICES.some((v) => has(v.id, s.id)) ? 1 : 0)).join('');
+    const sig = JSON.stringify([L.items, l, curKey, uiPl.pickOpen, voice.checked, avail, aff.list.length, aff.pause, aff.twice, affG()]);
+    if (sig === uiPl.sig) return;
+    uiPl.sig = sig;
+    const ol = $('#plList');
+    ol.textContent = '';
+    L.items.forEach((e, k) => ol.append(plRow(e, k, L.items.length, l, curKey)));
+    $('#plEmpty').hidden = L.items.length > 0;
+    $('#plAddBtn').setAttribute('aria-expanded', String(uiPl.pickOpen));
+    $('#plAddBtn').disabled = L.items.length >= PL_MAX && !uiPl.pickOpen;
+    $('#plPick').hidden = !uiPl.pickOpen;
+    if (uiPl.pickOpen) renderPlPick(l);
+    if (uiPl.focusKey) { // keyboard users keep their place after ▲/▼
+      const [key, act] = uiPl.focusKey; uiPl.focusKey = null;
+      const row = [...ol.children].find((r) => r.dataset.key === key), b = row && row.querySelector(`[data-act="${act}"]`);
+      if (b) (b.disabled ? row.querySelector('.icon-btn:not(:disabled)') || b : b).focus();
+    }
+  }
+
   // ---------- language ----------
   const voiceName = (v) => (I18N[lang]['voice.' + v.id] || (v.local && v['name_' + lang]) || v.name);
   // labels of everything buildUI created (static markup is handled by applyStatic)
@@ -2611,6 +2970,8 @@
     medLang = l;
     const cur = SESSIONS.find((s) => s.id === voice.session);
     if (cur && sessionLang(cur) !== medLang && !sleep.on) stopVoice();
+    if (plRun && plRun.lang !== medLang && !sleep.on) plEnd(); // v0.15: (also between items)
+    uiPl.sel = null; uiPl.pickOpen = false;
     ensureVoice();
     render();
   }
@@ -2618,6 +2979,7 @@
   const setText = (e, v) => { if (e.textContent !== v) e.textContent = v; }; // no DOM write (no relayout) when unchanged
   const fmt = (ms) => { const m = Math.floor(ms / 60000), s = Math.floor((ms % 60000) / 1000); return `${m}:${String(s).padStart(2, '0')}`; };
   function tickTimer() {
+    renderPlLive(); // v0.15: gap countdown / notes
     const lbl = $('#timerLeft');
     if (sleep.on) {
       const left = Math.max(0, sleep.endAt - Date.now());
@@ -2664,13 +3026,15 @@
     const cap = $('#voiceCaption'), cs = SESSIONS.find((s) => s.id === voice.session);
     const capLang = cs ? sessionLang(cs) : 'he';
     if (cap.lang !== capLang) { cap.lang = capLang; cap.dir = capLang === 'ru' ? 'ltr' : 'rtl'; }
-    cap.textContent = voice.caption;
-    cap.hidden = !voice.caption;
+    const again = !voice.caption && plAgainS() ? t('plAgain') : ''; // v0.15: 🔁 between two repeats
+    cap.textContent = voice.caption || again;
+    cap.hidden = !(voice.caption || again);
     // v0.13.1: a handed-over session names the voice it really plays in ("האפירמציות בקול 1 — רך")
     let note = ui.lentNote;
     if (!note) { note = ui.lentNote = el('p', 'voice-caption voice-lent'); cap.before(note); }
     const lv = voice.lent && cs && VOICES.find((v) => v.id === voice.id);
-    const lt = lv ? (capLang === 'ru' ? I18N.ru.lentVoice(I18N.ru['voice.' + lv.id] || lv.name_ru || lv.name) : t('lentVoice', voiceName(lv))) : '';
+    const lk = cs && cs.aff ? 'lentVoice' : 'lentVoiceMed'; // v0.15: meditations are handed over too
+    const lt = lv ? (capLang === 'ru' ? I18N.ru[lk](I18N.ru['voice.' + lv.id] || lv.name_ru || lv.name) : t(lk, voiceName(lv))) : '';
     if (note.lang !== capLang) { note.lang = capLang; note.dir = capLang === 'ru' ? 'ltr' : 'rtl'; }
     setText(note, lt);
     note.hidden = !lt;
@@ -2712,6 +3076,7 @@
     if (document.activeElement !== vv && +vv.value !== state.voiceVol) { vv.value = state.voiceVol; setFill(vv); vvText(); }
     renderVoice();
     renderAff();
+    renderPl();
     renderSleep();
     updateMediaSession();
     tickTimer();
@@ -2770,19 +3135,22 @@
   function rcSnap() {
     const s = { playing: state.playing, preset: state.preset, mode: state.mode, master: r2(state.master), timerMin: state.timerMin,
       sleepOn: sleep.on, sleepMin: sleep.min, sleepVoice: sleep.voice, medLang, voiceId: voice.id, voiceVol: r2(state.voiceVol),
-      session: voice.session, solfHz: state.solfHz };
+      session: voice.session, solfHz: state.solfHz,
+      // v0.15: the playlist's content stays on each phone; these three are remote-controllable
+      plPlay: !!(plRun && !plRun.single), plLoop: plList(medLang).loop, plRepeat: pl.repeat };
     LAYERS.forEach((l) => { s[`L.${l.id}.on`] = state.layers[l.id].on; s[`L.${l.id}.vol`] = r2(state.layers[l.id].vol); });
     return s;
   }
   // order for applying a whole snapshot: settings first, then what starts things, play/pause last
   // (solfHz before preset: a preset that names its own tone, or turns the layer off, then has the last word)
   const RC_ORDER = ['medLang', 'voiceId', 'voiceVol', 'master', 'timerMin', 'solfHz', 'preset', 'mode',
-    ...LAYERS.flatMap((l) => [`L.${l.id}.on`, `L.${l.id}.vol`]), 'sleepMin', 'sleepVoice', 'sleepOn', 'session', 'playing'];
+    ...LAYERS.flatMap((l) => [`L.${l.id}.on`, `L.${l.id}.vol`]), 'sleepMin', 'sleepVoice', 'sleepOn', 'plLoop', 'plRepeat',
+    'session', 'plPlay', 'playing'];
   const rcValid = (k, v) => {
     const L = rcLayerKey(k);
     if (L) return LAYERS.some((l) => l.id === L[1]) && (L[2] === 'on' ? typeof v === 'boolean' : typeof v === 'number' && v >= 0 && v <= 1);
     switch (k) {
-      case 'playing': case 'sleepOn': case 'sleepVoice': return typeof v === 'boolean';
+      case 'playing': case 'sleepOn': case 'sleepVoice': case 'plPlay': case 'plLoop': case 'plRepeat': return typeof v === 'boolean';
       case 'preset': return v === null || v === SLEEP_MIX.id || PRESETS.some((p) => p.id === v);
       case 'mode': return MODES.some((m) => m.id === v);
       case 'master': case 'voiceVol': return typeof v === 'number' && v >= 0 && v <= 1;
@@ -2796,6 +3164,8 @@
       case 'affList': return affListOk(v);
       case 'affPause': return Number.isInteger(v) && v >= AFF_PAUSE_MIN && v <= AFF_PAUSE_MAX;
       case 'affTwice': return typeof v === 'boolean';
+      case 'plItems': return plItemsOk(v);
+      case 'plGap': return PL_GAPS.includes(v);
       default: return false;
     }
   };
@@ -2822,10 +3192,21 @@
       case 'sleepVoice': sleep.voice = v; render(); break;
       case 'medLang': setMedLang(v); break;
       case 'voiceId': setVoice(v, true); break;
-      case 'session':
-        if (v === null) { if (voice.session) stopVoice(); }
-        else if (v !== voice.session) { const s = SESSIONS.find((x) => x.id === v); if (s) startVoice(s); }
+      case 'session': // v0.15: picking / stopping a single session ends a running playlist
+        if (v === null) { plEnd(); if (voice.session) stopVoice(); }
+        else if (v !== voice.session) { const s = SESSIONS.find((x) => x.id === v); if (s) { plEnd(); startVoice(s); } }
         break;
+      case 'plPlay':
+        if (v && !(plRun && !plRun.single)) plStart();
+        else if (!v && plRun && !plRun.single) plEnd();
+        break;
+      case 'plLoop': plList(medLang).loop = v; plSave(); render(); break;
+      case 'plRepeat':
+        pl.repeat = v; plSave();
+        if (!v && plRun && plRun.single && plRun.phase === 'gap') plEnd(); // off between repeats: stop (playing: ends at its end)
+        render(); break;
+      case 'plItems': plList(medLang).items = v.map((e) => ({ k: e.k, sid: e.sid })); plSave(); render(); break;
+      case 'plGap': plList(medLang).gap = v; plSave(); render(); break;
       case 'profiles': profSet(v); break;
       case 'affList': affSetList(v); break;
       case 'affPause': aff.pause = v; affSave(); render(); break;
@@ -2851,6 +3232,9 @@
       case 'medLang': medLang = v; break;
       case 'voiceId': voice.id = v; break;
       case 'session': voice.session = v; voice.caption = ''; break;
+      case 'plPlay': plMirror.play = v; break;
+      case 'plLoop': plMirror.loop = v; break;
+      case 'plRepeat': plMirror.repeat = v; break;
       default: break;
     }
   }
@@ -2870,13 +3254,13 @@
       if (p && p.solfHz) state.solfHz = p.solfHz;
     } else if (k === 'solfHz') { if (state.layers.solfeggio.on && v !== prevHz) state.preset = null; }
     else if (k === 'mode') { state.preset = null; state.layers.binaural.on = true; }
-    else if ((k === 'session' && v) || (k === 'sleepOn' && v)) state.playing = true;
+    else if ((k === 'session' && v) || (k === 'sleepOn' && v) || (k === 'plPlay' && v)) state.playing = true;
     else if (k === 'playing' && !v) sleep.on = false;
   }
 
   // v0.13: personal data of THIS phone (profiles, affirmation list, pause, repeat): through rcDo like every control,
   // but never sent to / mirrored from a paired phone — a remote 'aff' session plays the player phone's own list
-  const RC_LOCAL = new Set(['profiles', 'affList', 'affPause', 'affTwice']);
+  const RC_LOCAL = new Set(['profiles', 'affList', 'affPause', 'affTwice', 'plItems', 'plGap']); // v0.15: + the playlist's content
   // the single entry point of every control
   function rcDo(k, v) {
     if (!rcValid(k, v)) return;
@@ -2912,7 +3296,8 @@
   function rcExtras() {
     const now = Date.now();
     return { tl: state.playing && state.endAt ? Math.max(0, state.endAt - now) : state.remainMs || 0,
-      sl: sleep.on ? Math.max(0, sleep.endAt - now) : 0, sd: sleep.done };
+      sl: sleep.on ? Math.max(0, sleep.endAt - now) : 0, sd: sleep.done,
+      pl: (() => { const p = plNowInfo(); return p ? [p.k, p.n, p.sid, p.gap ? 1 : 0, Math.round(p.left)] : null; })() }; // v0.15
   }
   function rcFlushState() {
     rc.txTO = 0;
@@ -2940,7 +3325,7 @@
     if (rc.role === 'player' && m.type === 'cmd' && Array.isArray(m.ops)) {
       const rejected = [];
       m.ops.forEach((op) => {
-        if (!Array.isArray(op) || !rcValid(op[0], op[1])) return;
+        if (!Array.isArray(op) || RC_LOCAL.has(op[0]) || !rcValid(op[0], op[1])) return; // v0.15: local-only keys never come in
         const at = (typeof op[2] === 'number' ? Math.min(op[2], m.ts) : m.ts) + (peer.skew || 0); // their tap, on our clock
         if ((rc.stamp[op[0]] || 0) > at) { rejected.push(op[0]); return; } // a newer local tap wins
         rcSetKey(op[0], op[1]);
@@ -2971,10 +3356,14 @@
       sleep.endAt = sleep.on ? Date.now() + Math.max(0, (x.sl || 0) - age) : 0;
       sleep.done = !!x.sd && !sleep.on;
       render();
-    } else keys.forEach((k) => { if (rcSnap()[k] !== R.s[k]) rcSetKey(k, R.s[k]); }); // re-snapshot: a preset moves layers
+    } else keys.forEach((k) => {
+      if (k === 'session' && R.s.plPlay) return; // v0.15: a playlist drives its own sessions here (this phone's list)
+      if (rcSnap()[k] !== R.s[k]) rcSetKey(k, R.s[k]); // re-snapshot: a preset moves layers
+    });
   }
   // controller without local sound: silence this phone's own audio (once), then show the player
   function rcGoMirror() {
+    plEnd();
     if (voice.session) stopVoice();
     if (sleep.on) exitSleep(false);
     if (state.playing) pause();
@@ -2983,6 +3372,7 @@
   // leaving mirror mode: the shown "playing" was the other phone's — this one is silent
   function rcLeaveMirror() {
     state.playing = false; voice.session = null; voice.caption = ''; sleep.on = false; sleep.done = false; state.endAt = 0;
+    plMirror.play = false;
     render();
   }
 
@@ -3186,6 +3576,14 @@
       state.solfHz = keepHz;
       return oc.startRendering().then((b) => b.getChannelData(0));
     } };
+  // v0.15 playlist test hooks: end() marks the playing session finished (it then ends exactly like a natural end);
+  // unavail(sid) makes a session unplayable in every voice (to test skipping)
+  if (window.__shaket) window.__shaket.pl = {
+    info: () => ({ run: plRun && Object.assign({}, plRun, { gapTO: undefined }), now: plNowInfo(), lists: JSON.parse(JSON.stringify(pl.lists)),
+      repeat: pl.repeat, note: plNote, session: voice.session, voiceId: voice.id, playing: state.playing, log: plLog.slice() }),
+    end: () => { if (!voice.session) return false; voice.cut = voice.token; return true; },
+    unavail: (sid) => { VOICES.forEach((v) => { voice.avail[v.id + '/' + sid] = false; }); render(); },
+    clearLog: () => { plLog.length = 0; } };
   if (window.__shaket) window.__shaket.rc = { info: rcInfo, // v0.12 remote-control test hooks
     setRole: rcSetRole, claim: rcClaim, newCode: rcNewOffer, unpair: rcUnpair, setLocalPlay: rcSetLocalPlay, act: rcDo, room: () => rc.room };
   // v0.11.1: hidden Android diagnostics — a 1.5 s press on the footer opens the wrapper's native diag screen.

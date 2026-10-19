@@ -549,3 +549,44 @@ body.sleeping { overflow: hidden; }
 }
 .solf-hz .hz { font-variant-numeric: tabular-nums; letter-spacing: .02em; max-width: 100%; }
 .solf-hz .chip small { margin-top: 3px; max-width: 100%; overflow-wrap: break-word; }
+
+/* ---------- playlist + loop (v0.15) ---------- */
+/* reuses the affirmations editor rows (.aff-row / .aff-body / .aff-ctrls / .icon-btn): tap a row for ▲ ▼ ✕.
+   Large-text safe: everything wraps, no fixed heights on text, min-width: 0 in every row. */
+.pl { display: grid; gap: 12px; }
+.pl .card-head h2 { margin-bottom: 2px; }
+.pl [hidden], .pl-total[hidden] { display: none; }
+.pl-total { color: var(--muted); font-size: 13px; min-width: 0; overflow-wrap: break-word; }
+.pl-edit { display: grid; gap: 12px; min-width: 0; }
+.pl-edit > .row-name { margin-top: 2px; }
+.pl-idx {
+  flex: none; min-width: 1.9em; align-self: stretch; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.pl-row .aff-body { flex: 1 1 0; }
+.pl-row .aff-ctrls { padding-inline-start: 6px; }
+.pl-name { font-size: 15px; }
+.pl-name[lang="ru"], .pl-dur[lang="ru"], .pl-now-name[lang="ru"], .pl-opt[lang="ru"] { font-family: "Rubik", "Heebo", system-ui, sans-serif; }
+.pl-dur { font-size: 12.5px; color: var(--muted); max-width: 100%; overflow-wrap: break-word; }
+.pl-dur[dir="ltr"] { justify-self: stretch; text-align: left; }
+/* the playing row: teal edge + a ▶ before its number */
+.pl-row.cur { background: linear-gradient(135deg, rgba(63,184,176,.20), rgba(79,70,184,.18)); border-color: rgba(127,220,207,.55); }
+.pl-row.cur .pl-idx { color: var(--teal-soft); }
+.pl-row.cur .pl-idx::before { content: "▶"; font-size: .8em; margin-inline-end: 2px; }
+.pl-opts {
+  --sg: 8px; display: grid; gap: var(--sg);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, max(7em, calc((100% - var(--sg)) / 2))), 1fr));
+}
+.pl-opt {
+  display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 3px;
+  min-width: 0; min-height: 52px; padding: 8px 12px; border-radius: 16px; text-align: start; line-height: 1.25;
+}
+.pl-opt span { max-width: 100%; overflow-wrap: break-word; }
+.pl-opt small { margin: 0; }
+.pl-gaps .chip { flex: 1 1 0; min-width: min(100%, max-content); padding: 6px 8px; white-space: nowrap; }
+.pl-play { width: 100%; min-height: 52px; font-size: 16px; font-weight: 500; }
+.pl-now { margin: 0; color: var(--teal-soft); font-size: 15px; line-height: 1.5; overflow-wrap: break-word; }
+.pl-now-name { font-weight: 500; }
+.pl-note { margin: 0; font-size: 13.5px; color: #f0d2b0; line-height: 1.45; overflow-wrap: break-word; }
+.pl-repeat { margin-top: 12px; }
+.pl-repeat small { display: block; margin-top: 2px; }

@@ -110,7 +110,37 @@
         <input id="voiceVol" type="range" min="0" max="1" step="0.01" value="0.71" aria-label="עוצמת הקול המנחה" data-i18n-aria="voiceVol">
       </div>
       <div id="sessions" class="sessions" role="group" aria-label="מפגשים מודרכים" data-i18n-aria="sessionsAria"></div>
+      <button id="plRepeat" class="mini-switch pl-repeat" type="button" role="switch" aria-checked="false">
+        <span><span data-i18n="plRepeat">🔁 חזרה על המדיטציה</span> <small data-i18n="plRepeatSub">עד שעוצרים</small></span>
+        <span class="switch" aria-hidden="true"></span>
+      </button>
       <p id="voiceCaption" class="voice-caption" aria-live="polite" hidden></p>
+    </div>
+
+    <div id="plCard" class="card pl">
+      <div class="card-head">
+        <h2 data-i18n="plTitle">רשימת השמעה</h2>
+        <span id="plTotal" class="pl-total" hidden></span>
+      </div>
+      <p class="aff-sub" data-i18n="plSub">כמה מדיטציות ואפירמציות ברצף, בשפת המדיטציה</p>
+      <p id="plMirrorNote" class="aff-sub pl-mirror" hidden data-i18n="plMirrorNote">הכפתורים מפעילים את הרשימה שבטלפון המנגן</p>
+      <div id="plEdit" class="pl-edit">
+        <ol id="plList" class="aff-list pl-list" aria-label="פריטי רשימת ההשמעה" data-i18n-aria="plListAria"></ol>
+        <p id="plEmpty" class="aff-empty" hidden data-i18n="plEmpty">הרשימה ריקה — מוסיפים מדיטציות או אפירמציות, והן יתנגנו ברצף.</p>
+        <div class="chips aff-actions">
+          <button id="plAddBtn" type="button" class="chip" aria-expanded="false" aria-controls="plPick" data-i18n="plAdd">+ הוספה לרשימה</button>
+        </div>
+        <div id="plPick" class="aff-lib pl-pick" hidden></div>
+        <span id="plGapLbl" class="row-name" data-i18n="plGapLbl">הפסקה בין פריטים</span>
+        <div id="plGaps" class="chips pl-gaps" role="group" aria-labelledby="plGapLbl"></div>
+      </div>
+      <button id="plLoop" class="mini-switch" type="button" role="switch" aria-checked="false">
+        <span data-i18n="plLoop">🔁 חזרה בלולאה</span>
+        <span class="switch" aria-hidden="true"></span>
+      </button>
+      <button id="plPlay" type="button" class="chip pl-play" aria-pressed="false">▶ השמעת הרשימה</button>
+      <p id="plNow" class="pl-now" aria-live="polite" hidden><span id="plNowTxt"></span> <span id="plNowName" class="pl-now-name"></span></p>
+      <p id="plNote" class="pl-note" role="status" hidden></p>
     </div>
 
     <div id="profCard" class="card prof" hidden>
@@ -218,7 +248,7 @@
   </div>
 </div>
 
-<footer class="foot">v0.14.0 · <span data-i18n="foot">צלילים לנשימה ולמנוחה</span></footer>
+<footer class="foot">v0.15.0 · <span data-i18n="foot">צלילים לנשימה ולמנוחה</span></footer>
 
 <script src="remote.js"></script>
 <script src="app.js"></script>
